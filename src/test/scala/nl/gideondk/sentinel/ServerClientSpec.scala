@@ -50,18 +50,16 @@ class PingClientWorker extends SentinelClientWorker {
 object ServerClientTestHelper {
   implicit val actorSystem = ActorSystem("test-system")
 
-  var pingServer: ActorRef = _
-  var pingClient: ActorRef = _
-
-  def init {
-    pingServer = SentinelServer.randomRouting[PingServerWorker](9999, 4, "Ping Server")
+  lazy val (pingServer, pingClient) = {
+    val pingServer = SentinelServer.randomRouting[PingServerWorker](9999, 4, "Ping Server")
     Thread.sleep(2)
-    pingClient = SentinelClient.randomRouting[PingClientWorker]("localhost", 9999, 4, "Ping Client")
+    val pingClient = SentinelClient.randomRouting[PingClientWorker]("localhost", 9999, 4, "Ping Client")
+    (pingServer, pingClient)
   }
 }
 
 class ServerClientSpec extends Specification {
-  ServerClientTestHelper.init
+  //ServerClientTestHelper.init
 
   "A client" should {
     "be able to ping to the server" in {
