@@ -1,6 +1,10 @@
-logs
-project/project
-project/target
+\#*\#
+.idea
+.idea_modules
+.classpath
+.cache
+.project
+*.iml
 target
-tmp
-.history
+.DS_Store
+.ensime*
