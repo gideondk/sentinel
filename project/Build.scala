@@ -27,6 +27,7 @@ object ApplicationBuild extends Build {
     "org.scalaz" %% "scalaz-effect" % "7.0.0-M7" withSources(),
     "org.specs2" %% "specs2" % "1.13",
 
+    "com.chuusai" % "shapeless_2.10.0" % "1.2.4",
     "com.typesafe.akka" % "akka-actor_2.10" % "2.2-SNAPSHOT" withSources()
   )
 
@@ -35,7 +36,7 @@ object ApplicationBuild extends Build {
     settings = Project.defaultSettings ++ Seq(
       libraryDependencies ++= appDependencies,
       mainClass := Some("Main")
-    ) ++ spray.boilerplate.BoilerplatePlugin.Boilerplate.settings
+    ) ++ Format.settings
   )
 }
 

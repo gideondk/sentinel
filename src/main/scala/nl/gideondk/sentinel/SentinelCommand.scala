@@ -8,14 +8,14 @@ import scalaz._
 import Scalaz._
 import effect._
 
-trait SentinelCommand {  
+trait SentinelCommand {
   def command: ByteString
   def promise: Promise[Any]
 }
 
 object SentinelCommand {
-	def apply(c: ByteString, p: Promise[Any]) = new SentinelCommand {
-		val command = c
-		val promise = p
-	}
+  def apply(c: ByteString, p: Promise[Any]) = new SentinelCommand {
+    val command = c
+    val promise = p
+  }
 }

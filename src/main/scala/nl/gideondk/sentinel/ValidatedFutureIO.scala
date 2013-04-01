@@ -20,7 +20,7 @@ object ValidatedFuture {
       ValidatedFuture(fa.run.flatMap(validation ⇒ validation match {
         case Success(succ) ⇒ f(succ).run
         case Failure(fail) ⇒ Future(fail.failure)
-    }))
+      }))
   }
 
   def apply[T](a: ⇒ Future[T]): ValidatedFuture[T] = ValidatedFuture((a.map(_.success) recover {
@@ -60,12 +60,12 @@ trait ValidatedFutureIOFunctions {
       .map(_.toList.sequence[({ type l[a] = ValidationNEL[Throwable, a] })#l, T])).map(z ⇒ ValidatedFuture(z.map(y ⇒ (y.bimap(x ⇒ x.head, x ⇒ x))))))
 }
 
-trait ValidatedFutureIOAnyCast { 
+trait ValidatedFutureIOAnyCast {
   import shapeless._
   import Typeable._
 
   implicit class Castable(val vfi: ValidatedFutureIO[Any]) {
-    def as[U](implicit castU : Typeable[U]) = 
+    def as[U](implicit castU: Typeable[U]) =
       ValidatedFutureIO(vfi.run.map(z ⇒ ValidatedFuture(z.run.map(x ⇒ x.flatMap(_.cast[U].toSuccess(new Exception("Wrong type cast.")))))))
   }
 }

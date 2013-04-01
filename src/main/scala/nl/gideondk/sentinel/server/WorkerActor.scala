@@ -2,7 +2,6 @@ package nl.gideondk.sentinel.server
 
 import nl.gideondk.sentinel._
 
-
 import scala.collection.mutable.Queue
 
 import akka.actor.IO.IterateeRef
@@ -39,35 +38,34 @@ trait SentinelServerWorker extends Actor {
 
   def genericMessageHandler: Receive = {
     case Connected(remoteAddr, localAddr) ⇒
-      log.debug(workerDescription + " connected to client: " + remoteAddr)
+      log.debug(workerDescription+" connected to client: "+remoteAddr)
       sender ! Register(self)
       val tcpListener = sender
       state(tcpListener) flatMap {
-        _ ⇒ akka.actor.IO.repeat(processRequest.map(x => if (writeAck) write(x, tcpListener) else tcpListener ! Write(x)))
+        _ ⇒ akka.actor.IO.repeat(processRequest.map(x ⇒ if (writeAck) write(x, tcpListener) else tcpListener ! Write(x)))
       }
-      
+
     case ErrorClosed(cause) ⇒
-      log.error("Client disconnected from " + workerDescription + " with cause: " + cause)
+      log.error("Client disconnected from "+workerDescription+" with cause: "+cause)
 
     case m: ConnectionClosed ⇒
-      log.debug("Client disconnected from " + workerDescription) // TODO: handle the specific cases
+      log.debug("Client disconnected from "+workerDescription) // TODO: handle the specific cases
 
     case Received(bytes: ByteString) ⇒
       state(sender)(akka.actor.IO.Chunk(bytes))
 
-
     case CommandFailed(cmd: Command) ⇒
       /* If a Nack-based flow control is used, try to resend write message if failed */
       cmd match {
-        case w: Write if(!writeAck) => sender ! w 
-        case _ => log.debug(workerDescription + " failed command: " + cmd.failureMessage)
+        case w: Write if (!writeAck) ⇒ sender ! w
+        case _                       ⇒ log.debug(workerDescription+" failed command: "+cmd.failureMessage)
       }
 
     case WriteAck ⇒
       if (writeAck) {
         writeState(sender) = true
         if (messQueue.get(sender).isEmpty) messQueue(sender) = Queue[ByteString]()
-        val writeQueue = messQueue(sender)      
+        val writeQueue = messQueue(sender)
         if (writeQueue.length > 0)
           write(writeQueue.dequeue(), sender)
       }

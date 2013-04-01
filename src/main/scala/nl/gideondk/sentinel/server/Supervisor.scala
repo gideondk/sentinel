@@ -22,7 +22,7 @@ import scala.reflect.ClassTag
 trait SentinelServer extends Actor {
   import akka.io.Tcp._
   import context.dispatcher
-  
+
   val tcp = akka.io.IO(Tcp)(context.system)
 
   /* Port to which the server should listen to */
@@ -35,17 +35,17 @@ trait SentinelServer extends Actor {
   /* Worker class and description */
   def workerClass: Class[_ <: Actor]
   def serverDescription: String
-  
+
   val reinitTime: FiniteDuration = 1 second
 
   val log = Logging(context.system, this)
-  var router:Option[ActorRef] = None
+  var router: Option[ActorRef] = None
 
   def routerProto = {
     context.system.actorOf(Props(workerClass).withRouter(routerConfig).withDispatcher("nl.gideondk.sentinel.sentinel-server-worker-dispatcher"))
   }
 
-  def initialize {    
+  def initialize {
     router = Some(routerProto)
     context.watch(router.get)
   }
@@ -64,38 +64,38 @@ trait SentinelServer extends Actor {
 
     case Terminated(actor) ⇒
       router = None
-      log.debug("Router died, restarting in: "+ reinitTime.toString())
+      log.debug("Router died, restarting in: "+reinitTime.toString())
       context.system.scheduler.scheduleOnce(reinitTime, self, ReconnectServerRouter)
 
     case Bound ⇒
-      log.debug(serverDescription + " bound to " + address)
+      log.debug(serverDescription+" bound to "+address)
 
     case CommandFailed(cmd) ⇒
       cmd match {
         case x: Bind ⇒
-          log.error(serverDescription + " failed to bind to " + address)
+          log.error(serverDescription+" failed to bind to "+address)
       }
 
     case req @ Connected(remoteAddr, localAddr) ⇒
       router.get forward req
   }
 
-  def messageHandler: Receive = Map.empty 
+  def messageHandler: Receive = Map.empty
 
   def receive = messageHandler orElse genericMessageHandler
 }
 
 object SentinelServer {
 
-    /** Creates a new SentinelServer
-    * 
-    * @tparam T worker class to be used for the server
-    * @param serverPort the port to host on
-    * @param serverRouterConfig Akka router configuration to be used to route the worker actors
-    * @param description description used for logging purposes
-    */
+  /** Creates a new SentinelServer
+   *
+   *  @tparam T worker class to be used for the server
+   *  @param serverPort the port to host on
+   *  @param serverRouterConfig Akka router configuration to be used to route the worker actors
+   *  @param description description used for logging purposes
+   */
 
-  def apply[T <: SentinelServerWorker : ClassTag](serverPort: Int, serverRouterConfig: RouterConfig, description: String = "Sentinel Server")(implicit system: ActorSystem) = {
+  def apply[T <: SentinelServerWorker: ClassTag](serverPort: Int, serverRouterConfig: RouterConfig, description: String = "Sentinel Server")(implicit system: ActorSystem) = {
     system.actorOf(Props(new SentinelServer {
       val workerClass = implicitly[ClassTag[T]].runtimeClass.asInstanceOf[Class[_ <: Actor]]
       val serverDescription = description
@@ -105,25 +105,25 @@ object SentinelServer {
   }
 
   /** Creates a new SentinelServer which routes to workers randomly
-    * 
-    * @tparam T worker class to be used for the server
-    * @param serverPort the port to host on
-    * @param numberOfWorkers the amount of worker actors used to represent the server
-    * @param description description used for logging purposes
-    */
+   *
+   *  @tparam T worker class to be used for the server
+   *  @param serverPort the port to host on
+   *  @param numberOfWorkers the amount of worker actors used to represent the server
+   *  @param description description used for logging purposes
+   */
 
-  def randomRouting[T <: SentinelServerWorker : ClassTag](serverPort: Int, numberOfWorkers: Int, description: String = "Sentinel Server")(implicit system: ActorSystem) = 
+  def randomRouting[T <: SentinelServerWorker: ClassTag](serverPort: Int, numberOfWorkers: Int, description: String = "Sentinel Server")(implicit system: ActorSystem) =
     apply[T](serverPort, RandomRouter(numberOfWorkers), description)
 
   /** Creates a new SentinelServer which to workers in a round robin style
-    * 
-    * @tparam T worker class to be used for the server
-    * @param serverPort the port to host on
-    * @param numberOfWorkers the amount of worker actors used to represent the server
-    * @param description description used for logging purposes
-    */
+   *
+   *  @tparam T worker class to be used for the server
+   *  @param serverPort the port to host on
+   *  @param numberOfWorkers the amount of worker actors used to represent the server
+   *  @param description description used for logging purposes
+   */
 
-  def roundRobinRouting[T <: SentinelServerWorker : ClassTag](serverPort: Int, numberOfWorkers: Int, description: String = "Sentinel Server")(implicit system: ActorSystem) =          
+  def roundRobinRouting[T <: SentinelServerWorker: ClassTag](serverPort: Int, numberOfWorkers: Int, description: String = "Sentinel Server")(implicit system: ActorSystem) =
     apply[T](serverPort, RoundRobinRouter(numberOfWorkers), description)
 
 }

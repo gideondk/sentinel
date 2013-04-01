@@ -14,5 +14,3 @@ addSbtPlugin("com.github.mpeltonen" % "sbt-idea" % "1.2.0-SNAPSHOT")
 addSbtPlugin("com.typesafe.sbteclipse" % "sbteclipse-plugin" % "2.1.1")
 
 addSbtPlugin("org.ensime" % "ensime-sbt-cmd" % "0.1.1")
-
-addSbtPlugin("io.spray" % "sbt-boilerplate" % "0.5.0")

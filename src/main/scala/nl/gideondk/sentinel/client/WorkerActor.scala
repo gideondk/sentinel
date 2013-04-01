@@ -32,7 +32,7 @@ trait SentinelClientWorker extends Actor with Stash {
 
   /* Server address to connect to (will normally be initialized by the supervisor) */
   var address: Option[InetSocketAddress] = None
-  
+
   /* Worker description (for logging purposes) */
   def workerDescription: String
 
@@ -52,31 +52,31 @@ trait SentinelClientWorker extends Actor with Stash {
   }
 
   def genericMessageHandler: Receive = {
-    case h: ConnectToHost =>
+    case h: ConnectToHost ⇒
       address = Some(h.address)
       tcp ! Connect(h.address)
 
     case Connected(remoteAddr, localAddr) ⇒
       sender ! Register(self)
       tcpWorker = sender.point[Option]
-      log.debug(workerDescription + " connected to " + remoteAddr)
+      log.debug(workerDescription+" connected to "+remoteAddr)
 
       /* Unstash all requests, send prior to the server connection */
       unstashAll()
 
     case ErrorClosed(cause) ⇒
-      log.debug(workerDescription + " disconnected from (" + address + ") with cause: " + cause)
+      log.debug(workerDescription+" disconnected from ("+address+") with cause: "+cause)
       throw new DiconnectExceptionWithCause(cause)
 
     case PeerClosed ⇒
-      log.debug(workerDescription + " disconnected from (" + address + ")")
+      log.debug(workerDescription+" disconnected from ("+address+")")
       throw new PeerDisconnectedException
 
     case ConfirmedClosed ⇒
-      log.debug(workerDescription + " disconnected from (" + address + ")")
+      log.debug(workerDescription+" disconnected from ("+address+")")
 
     case m: ConnectionClosed ⇒
-      log.debug(workerDescription + " disconnected from (" + address + ")") // TODO: handle the specific cases
+      log.debug(workerDescription+" disconnected from ("+address+")") // TODO: handle the specific cases
       throw new DisconnectException
 
     case Received(bytes: ByteString) ⇒
@@ -85,12 +85,12 @@ trait SentinelClientWorker extends Actor with Stash {
     case CommandFailed(cmd: Command) ⇒
       /* If a Nack-based flow control is used, try to resend write message if failed */
       cmd match {
-        case w: Write if(!writeAck) => sender ! w 
-        case _ => log.debug(workerDescription + " failed command: " + cmd.failureMessage)
+        case w: Write if (!writeAck) ⇒ sender ! w
+        case _                       ⇒ log.debug(workerDescription+" failed command: "+cmd.failureMessage)
       }
 
     /* Generic handler for commands, should be extended through the specificMessageHandler for for extended functionality */
-    case c: SentinelCommand =>
+    case c: SentinelCommand ⇒
       tcpWorker match {
         case None ⇒ stash()
         case Some(w) ⇒
@@ -123,7 +123,8 @@ trait SentinelClientWorker extends Actor with Stash {
           writeAvailable = false
           w ! Write(bs, WriteAck)
       }
-    } else {
+    }
+    else {
       writeQueue enqueue bs
     }
   }

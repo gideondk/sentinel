@@ -19,8 +19,6 @@ import effect._
 import concurrent.Await
 import concurrent.duration.Duration
 
-import concurrent.{ Promise, Future }
-
 import akka.util.{ ByteStringBuilder, ByteString }
 import akka.routing.RandomRouter
 
@@ -33,7 +31,7 @@ class PingServerWorker extends SentinelServerWorker {
   val writeAck = false
   val workerDescription = "Ping Server Worker"
   val processRequest = for {
-    bs <- akka.actor.IO.take(4) // "PING"
+    bs ← akka.actor.IO.take(4) // "PING"
   } yield {
     val builder = new ByteStringBuilder
     builder.putBytes("PONG".getBytes)
@@ -45,51 +43,40 @@ class PingClientWorker extends SentinelClientWorker {
   val writeAck = false
   val workerDescription = "Ping Client Worker"
   val processRequest = for {
-    bs <- akka.actor.IO.take(4) // "PONG"
+    bs ← akka.actor.IO.take(4) // "PONG"
   } yield new String(bs.toArray)
 }
 
 object ServerClientTestHelper {
-    implicit val actorSystem = ActorSystem("test-system")
+  implicit val actorSystem = ActorSystem("test-system")
 
-    var pingServer: ActorRef = _
-    var pingClient: ActorRef = _
+  var pingServer: ActorRef = _
+  var pingClient: ActorRef = _
 
-    def init {
-      pingServer = SentinelServer.randomRouting[PingServerWorker](9999, 4, "Ping Server")
-      pingClient = SentinelClient.randomRouting[PingClientWorker]("localhost", 9999, 4, "Ping Client")
-    }
+  def init {
+    pingServer = SentinelServer.randomRouting[PingServerWorker](9999, 4, "Ping Server")
+    Thread.sleep(2)
+    pingClient = SentinelClient.randomRouting[PingClientWorker]("localhost", 9999, 4, "Ping Client")
+  }
 }
 
-class ServerClientSpec extends Specification  {
-
-  def timed(desc: String, n: Int)(benchmark: ⇒ Unit) = {
-    println("* " + desc)
-    val t = System.currentTimeMillis
-    benchmark
-    val d = System.currentTimeMillis - t
-
-    println("* - number of ops/s: "+n / (d / 1000.0)+"\n")
-  }
-
+class ServerClientSpec extends Specification {
   ServerClientTestHelper.init
 
   "A client" should {
     "be able to ping to the server" in {
-      for (i ← 0 to 200) {
-        Thread.sleep(5)
-      
-        val num = 400000
-        val mulActs = for (i <- 1 to num) yield (ServerClientTestHelper.pingClient ?? ByteString("PING"))
-        //val ioActs = ValidatedFutureIO.sequence(mulActs.toList)
-        val ioActs = mulActs.toList.map(_.run).sequence
-        val futs = ioActs.map(x => Future.sequence(x.map(_.run)))
-       
+      (ServerClientTestHelper.pingClient ?? ByteString("PING")).unsafeFulFill.toOption.get == "PONG"
+    }
 
-        val fut = futs.unsafePerformIO
-        timed("aaa", num){
-          Await.result(fut, Duration.Inf)
-        }
+    "be able to ping to the server in timely fashion" in {
+      val num = 200000
+      val mulActs = for (i ← 1 to num) yield (ServerClientTestHelper.pingClient ?? ByteString("PING"))
+      val ioActs = mulActs.toList.map(_.run).sequence
+      val futs = ioActs.map(x ⇒ Future.sequence(x.map(_.run)))
+
+      val fut = futs.unsafePerformIO
+      BenchmarkHelpers.timed("Ping-Ponging "+num+" requests", num) {
+        Await.result(fut, Duration.Inf)
         true
       }
     }
