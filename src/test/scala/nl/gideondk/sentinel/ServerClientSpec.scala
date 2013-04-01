@@ -65,7 +65,7 @@ class ServerClientSpec extends Specification {
 
   "A client" should {
     "be able to ping to the server" in {
-      (ServerClientTestHelper.pingClient ?? ByteString("PING")).unsafeFulFill.toOption.get == "PONG"
+      (ServerClientTestHelper.pingClient ?? ByteString("PING")).as[String].unsafeFulFill.toOption.get == "PONG"
     }
 
     "be able to ping to the server in timely fashion" in {
