@@ -1,0 +1,18 @@
+<classpath>
+  <classpathentry output="target/scala-2.10/classes" path="src/main/scala" kind="src"></classpathentry>
+  <classpathentry output="target/scala-2.10/classes" path="src/main/java" kind="src"></classpathentry>
+  <classpathentry output="target/scala-2.10/test-classes" path="src/test/scala" kind="src"></classpathentry>
+  <classpathentry output="target/scala-2.10/test-classes" path="src/test/java" kind="src"></classpathentry>
+  <classpathentry kind="con" path="org.scala-ide.sdt.launching.SCALA_CONTAINER"></classpathentry>
+  <classpathentry path="/Users/gideondk/.ivy2/cache/org.scalaz/scalaz-core_2.10/jars/scalaz-core_2.10-7.0.0-M7.jar" kind="lib"></classpathentry>
+  <classpathentry path="/Users/gideondk/.ivy2/cache/org.scalaz/scalaz-effect_2.10/jars/scalaz-effect_2.10-7.0.0-M7.jar" kind="lib"></classpathentry>
+  <classpathentry path="/Users/gideondk/.ivy2/cache/org.specs2/specs2_2.10/jars/specs2_2.10-1.13.jar" kind="lib"></classpathentry>
+  <classpathentry path="/Users/gideondk/.ivy2/cache/org.specs2/scalaz-core_2.10/jars/scalaz-core_2.10-7.0.0.jar" kind="lib"></classpathentry>
+  <classpathentry path="/Users/gideondk/.ivy2/cache/org.specs2/scalaz-concurrent_2.10/jars/scalaz-concurrent_2.10-7.0.0.jar" kind="lib"></classpathentry>
+  <classpathentry path="/Users/gideondk/.ivy2/cache/org.specs2/scalaz-effect_2.10/jars/scalaz-effect_2.10-7.0.0.jar" kind="lib"></classpathentry>
+  <classpathentry path="/Users/gideondk/.ivy2/cache/com.chuusai/shapeless_2.10.0/jars/shapeless_2.10.0-1.2.4.jar" kind="lib"></classpathentry>
+  <classpathentry path="/Users/gideondk/.ivy2/cache/com.typesafe.akka/akka-actor_2.10/jars/akka-actor_2.10-2.2-M2.jar" kind="lib"></classpathentry>
+  <classpathentry path="/Users/gideondk/.ivy2/cache/com.typesafe/config/bundles/config-1.0.0.jar" kind="lib"></classpathentry>
+  <classpathentry path="org.eclipse.jdt.launching.JRE_CONTAINER" kind="con"></classpathentry>
+  <classpathentry path="bin" kind="output"></classpathentry>
+</classpath>
