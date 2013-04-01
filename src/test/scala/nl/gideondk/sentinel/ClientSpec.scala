@@ -30,6 +30,7 @@ import concurrent._
 import concurrent.duration._
 
 case class Header(name: String, value: String)
+case class Response(statusCode: Int, statusMessage: String, httpver: String, headers: List[Header], body: Option[String])
 
 object HTTPConstants {
   val SP = ByteString(" ")
@@ -40,8 +41,6 @@ object HTTPConstants {
   val PATH = ByteString("/")
   val QUERY = ByteString("?")
 }
-
-case class Response(statusCode: Int, statusMessage: String, httpver: String, headers: List[Header], body: Option[String])
 
 object HTTPIteratees {
   import HTTPConstants._
@@ -106,6 +105,9 @@ class HTTPClientWorker extends SentinelClientWorker {
       log.debug(workerDescription+" disconnected from ("+address+")")
   }
 }
+
+/* Silly HTTP client, Sentinel should work best in socket persistant environment. 
+   Implemented here to show possible diversities */
 
 object HTTPClientTestHelper {
   implicit val actorSystem = ActorSystem("test-system")
