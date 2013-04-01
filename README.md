@@ -22,7 +22,7 @@ In overall, treat Sentinel as pre-release alpha software.
 **Currently available in Sentinel:**
 
 * Easy creation of reactive TCP servers / clients;
-* Easy initialisation of servers and clients for default or custom router worker strategies;
+* Easy initialization of servers and clients for default or custom router worker strategies;
 * Supervision (and restart / reconnection functionality) on both server and client `traits` for a defined number of worker children;
 * Default implementations for both Ack as Noack based flow control;
 * Sequencing and continuing multiple client operations using monad transformers (ValidatedFuture, ValidatedFutureIO).
@@ -66,15 +66,15 @@ The creation of a server is done in the same fashion:
 	  }
 	}
 
-### Initialisation
-The initialisation of the client is done through the `SentinelClient` helper): 
+### Initialization
+The initialization of the client is done through the `SentinelClient` helper): 
 	
 	SentinelClient.randomRouting[PingClientWorker](HOSTNAME, PORT, 
 		WORKER_COUNT, CLIENT_DESCRIPTION)
 		
 You can use the `randomRouting` / `roundRobinRouting` methods depending on the routing strategy you want to use to communicate to the workers. For a more custom approach the `apply` method is available, which lets you define a router strategy yourself. 
 
-Initialisation of a `SentinelServer` follows roughly the same API: 
+Initialization of a `SentinelServer` follows roughly the same API: 
 
 	SentinelServer.randomRouting[PingServerWorker](PORT, WORKER_COUNT,
 		SERVER_DESCRIPTION)
