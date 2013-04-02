@@ -75,6 +75,11 @@ Initialization of a `SentinelServer` follows roughly the same API:
 	SentinelServer.randomRouting[PingServerWorker](PORT, WORKER_COUNT,
 		SERVER_DESCRIPTION)
 
+### Ack vs Noack
+Sentinel implements both Ack as Noack based flow-control. Ack based flow-control is implemented through a queue, dequeuing the next command when the underlying TCP actor has successfully send the previous command. 
+
+Noack based flow control should give better performance in most cases, since it only resends failed messages, but isn't suited in environments where the order of commands is important (since a failed command A can be resend later then the successful B and C commands). 
+
 ### Client usage
 
 Once a client and / or server has been set up, the `??` method can be used on the client to send a command to the connected server. A `ByteString` is send to the client to form the command send to the server, returning a `ValidatedFutureIO[Any]` for the possible response of the server.
