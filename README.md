@@ -4,18 +4,18 @@
 
 ## Overview
 
-**Sentinel** is boilerplate for the creation of reactive TCP based servers and clients through Akka IO (2.2).
+**Sentinel** is boilerplate for reactive TCP based servers and clients through Akka IO (2.2).
 
-It focusses on raw performance by using reactive patterns through multiple sockets (at once) represented by multiple workers, both client / server side.
+The implementation focusses on raw performance, using reactive patterns through multiple sockets represented by multiple workers (both client / server side). Sentinel is designed for usage in persistent connection environments, making it (currently) less suited for things like HTTP and best suited for DB clients / RPC stacks.
 
-In it's current state, it's being used internally as a platform to test performance strategies for CPU and IO bound services. But will fuel both [Raiku](http://github.com/gideondk/raiku) as other soon-to-be-released Akka based libraries in the future.
+In its current state, it's being used internally as a platform to test performance strategies for CPU and IO bound services. In the nearby future, Sentinel will fuel both [Raiku](http://github.com/gideondk/raiku) as other soon-to-be-released Akka based libraries.
 
 
 ## Status
 
 Since the IO layer (and its API) in Akka 2.2 isn't stable yet, the current codebase of Sentinel can and will change heavily until the release of Akka 2.2.
 
-Sentinel will stay as close to Akka as possible, so the (legacy) Iteratee library of Akka is currently used to handle parsing of network messages. Because of this dependency, code may and will break if Sentinel switches to a different Iteratee library (depending if the current Iteratee library stays in Akka or not).
+Sentinel tries to stay as close to Akka as possible, therefore the (legacy) Iteratee library of Akka is currently used to handle parsing of network messages. Because of this dependency, code will break if Sentinel switches to a different Iteratee library (depending if the current Iteratee library stays in Akka or not).
 
 In overall, treat Sentinel as pre-release alpha software.
 
