@@ -59,11 +59,7 @@ The creation of a server is done in the same fashion:
 	  val workerDescription = "Ping Server Worker"
 	  val processRequest = for {
 	    bs ← akka.actor.IO.take(4) // "PING"
-	  } yield {
-	    val builder = new ByteStringBuilder
-	    builder.putBytes("PONG".getBytes)
-	    builder.result
-	  }
+	  } yield ByteString("PONG")
 	}
 
 ### Initialization

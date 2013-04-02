@@ -32,11 +32,7 @@ class PingServerWorker extends SentinelServerWorker {
   val workerDescription = "Ping Server Worker"
   val processRequest = for {
     bs ← akka.actor.IO.take(4) // "PING"
-  } yield {
-    val builder = new ByteStringBuilder
-    builder.putBytes("PONG".getBytes)
-    builder.result
-  }
+  } yield ByteString("PONG")
 }
 
 class PingClientWorker extends SentinelClientWorker {
