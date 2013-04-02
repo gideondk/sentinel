@@ -29,6 +29,8 @@ In overall, treat Sentinel as pre-release alpha software.
 
 The following is currently missing in Sentinel, but will be added soon:
 
+* A switch to the "new" pipeline implementation landing soon in Akka 2.2;
+* Handling of read interests;
 * More robust benchmarks for CPU / IO bound services to test router / worker strategies;
 * Better error handling and recovery;
 * Server to client communication;
