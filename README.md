@@ -36,8 +36,10 @@ The following is currently missing in Sentinel, but will be added soon:
 ## Installation
 You can install Sentinel through source (by publishing it into your local Ivy repository):
 
-	./sbt publish-local
-	
+```bash
+./sbt publish-local
+```
+
 (Repository will follow soon…)
 
 ## Usage
@@ -46,7 +48,8 @@ The new pipeline implementation in Akka IO, focusses on the definition of pipes 
 
 Each of these *stages* can easily be composed into a bigger stage (`A => B >> B => C`) taking a the input of the first stage and outputting the format of the last stage. Within Sentinel, the eventual output send to the IO workers is in the standard `ByteString` format, making it nessecary that the end stage of the pipeline always outputs content of the `ByteString` type:
 
-<pre><code>case class PingPongMessageFormat(s: String)
+```scala
+case class PingPongMessageFormat(s: String)
 
 class PingPongMessageStage extends SymmetricPipelineStage[HasByteOrder,
   PingPongMessageFormat, ByteString] {
@@ -63,20 +66,23 @@ class PingPongMessageStage extends SymmetricPipelineStage[HasByteOrder,
         }
    }
 }
-</code></pre>
+```
 
 It's possible to share a context between each stage of the pipeline, this context must only be used once within one pipeline. Sharing this context between multiple pipelines will result in unpredicted behavior, so it's best to create this context by using a generating function: 
 
-<pre><code>def ctx = new HasByteOrder {
+```scala
+def ctx = new HasByteOrder {
   def byteOrder = java.nio.ByteOrder.BIG_ENDIAN
 }
-</code></pre>
+```
 
 
 ### Client
 After the definition of the pipeline, a client is easily created:
 
-	SentinelClient.randomRouting("localhost", 9999, 4, "Ping Client")(ctx, stages, false)
+```scala
+SentinelClient.randomRouting("localhost", 9999, 4, "Ping Client")(ctx, stages, false)
+```
 
 Defining the host and port where the client should connect to, the amount of workers used to handle commands / events, description of the client and the earlier defined context and stages (for the complete list of parameters, check the code for the moment). 
 			
@@ -85,19 +91,22 @@ You can use the `randomRouting` / `roundRobinRouting` methods depending on the r
 ### Server
 The server follow practically the same route as the client, with one big difference: a handler must be defined to handle the incoming events from a client. The handle function is of type `Evt => Cmd`, taking the parsed result from the incoming pipe and preparing the response send back to the client. 
 
-	def handle(event: PingPongMessageFormat): Future[PingPongMessageFormat] = {
-    	event.s match {
-      	    case "PING" ⇒ Future(PingPongMessageFormat("PONG"))
-      	    case _      ⇒ Future.failed(new Exception("Unknown command"))
-    	}
-  	}
+```scala
+def handle(event: PingPongMessageFormat): Future[PingPongMessageFormat] = {
+    event.s match {
+          case "PING" ⇒ Future(PingPongMessageFormat("PONG"))
+          case _      ⇒ Future.failed(new Exception("Unknown command"))
+    }
+}
+```
 
 The return type of `Cmd` should be wrapped into a `Future`, this makes it able to do other non-blocking work within, for instance, IO focused services. Since you probably build your own handler on top of the `handle` function, Sentinel doesn't implement `Response` / `AsyncReponse` and leaves the implemention to the developer.
 
 After the definition of the handler, the server can be defined in same fashion as the client: 
 
-	SentinelServer.randomRouting(9999, 16, PingPongServerHandler.handle, "Ping Server")(ctx, stages, false)
-
+```scala
+SentinelServer.randomRouting(9999, 16, PingPongServerHandler.handle, "Ping Server")(ctx, stages, false)
+```
 
 ### Ack vs Noack
 Sentinel implements both Ack as Noack based flow-control. Ack based flow-control is implemented through a queue, dequeuing the next command when the underlying TCP actor has successfully send the previous command. 
@@ -108,8 +117,10 @@ Noack based flow control should give better performance in most cases, since it 
 
 Once a client and / or server has been set up, the `<~<` method can be used on the client to send a command to the connected server. Results are wrapped into a `ValidatedFutureIO` Monad transformer containing the type `Evt` defined in the incoming stage of the client.
 
-	PingPongTestHelper.pingClient <~< PingPongMessageFormat("PING")
-	res0: ValidatedFutureIO[PingPongMessageFormat]
+```scala
+PingPongTestHelper.pingClient <~< PingPongMessageFormat("PING")
+res0: ValidatedFutureIO[PingPongMessageFormat]
+```
 
 `ValidatedFutureIO` combines a `Validation`, `Future` and `IO` Monad into one type:  exceptions will be caught in the Validation, all async actions are abstracted into a future monad and all IO actions are as pure as possible by using the Scalaz IO monad.
 
