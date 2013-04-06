@@ -5,14 +5,11 @@ import org.ensime.sbt.Plugin.Settings.ensimeConfig
 import org.ensime.sbt.util.SExp._
 
 object ApplicationBuild extends Build {
-
-  val appName = "sentinel"
-  val appVersion = "0.2"
-
   override lazy val settings = super.settings ++
     Seq(
       name := "sentinel",
       version := "0.2",
+      organization := "nl.gideondk",
       scalaVersion := "2.10.0",
       parallelExecution in Test := false,
       resolvers ++= Seq(Resolver.mavenLocal,
