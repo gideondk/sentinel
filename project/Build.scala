@@ -7,12 +7,12 @@ import org.ensime.sbt.util.SExp._
 object ApplicationBuild extends Build {
 
   val appName = "sentinel"
-  val appVersion = "0.1"
+  val appVersion = "0.2"
 
   override lazy val settings = super.settings ++
     Seq(
       name := "sentinel",
-      version := "0.1",
+      version := "0.2",
       scalaVersion := "2.10.0",
       parallelExecution in Test := false,
       resolvers ++= Seq(Resolver.mavenLocal,
@@ -28,7 +28,7 @@ object ApplicationBuild extends Build {
     "org.specs2" %% "specs2" % "1.13",
 
     "com.chuusai" % "shapeless_2.10.0" % "1.2.4",
-    "com.typesafe.akka" % "akka-actor_2.10" % "2.2-M2" withSources()
+    "com.typesafe.akka" % "akka-actor_2.10" % "2.2-M2"
   )
 
   lazy val root = Project(id = "sentinel",
@@ -53,8 +53,6 @@ object Format {
     FormattingPreferences().
       setPreference(AlignParameters, true).
       setPreference(AlignSingleLineCaseStatements, true).
-      setPreference(CompactControlReadability, true).
-      setPreference(CompactStringConcatenation, true).
       setPreference(DoubleIndentClassDeclaration, true).
       setPreference(IndentLocalDefs, true).
       setPreference(IndentPackageBlocks, true).

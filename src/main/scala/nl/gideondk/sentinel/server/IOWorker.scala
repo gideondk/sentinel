@@ -1,64 +1,52 @@
 package nl.gideondk.sentinel.server
 
-import nl.gideondk.sentinel._
+import java.net.InetSocketAddress
 
 import scala.collection.mutable.Queue
 
-import akka.actor.IO.IterateeRef
 import akka.io._
 import akka.io.Tcp._
 
 import akka.actor._
-import akka.routing._
+import akka.event.Logging
 import akka.util.ByteString
 
-import akka.event.Logging
+import scalaz.Scalaz._
+import nl.gideondk.sentinel._
 
-import scalaz._
-import Scalaz._
-
-import java.net.InetSocketAddress
-
-trait SentinelServerWorker extends Actor {
+class SentinelServerIOWorker(description: String, writeAck: Boolean) extends Actor with Stash {
+  import SentinelServerWorker._
   val log = Logging(context.system, this)
-
-  /* Whether server should use Ack-based flow control */
-  def writeAck: Boolean
-
-  /* Internal Iteratee state */
-  val state = IterateeRef.Map.async[ActorRef]()(context.dispatcher)
-
-  def workerDescription: String
 
   /* Write queue used for ACK based sending */
   val writeState = scala.collection.mutable.Map[ActorRef, Boolean]()
   val messQueue = scala.collection.mutable.Map[ActorRef, Queue[ByteString]]()
 
-  def processRequest: akka.actor.IO.Iteratee[ByteString]
-
-  def genericMessageHandler: Receive = {
+  def receive = {
     case Connected(remoteAddr, localAddr) ⇒
-      log.debug(workerDescription+" connected to client: "+remoteAddr)
+      log.debug(description + " connected to client: " + remoteAddr)
       sender ! Register(self)
-      val tcpListener = sender
-      state(tcpListener) flatMap {
-        _ ⇒ akka.actor.IO.repeat(processRequest.map(x ⇒ if (writeAck) write(x, tcpListener) else tcpListener ! Write(x)))
-      }
 
     case ErrorClosed(cause) ⇒
-      log.error("Client disconnected from "+workerDescription+" with cause: "+cause)
+      log.error("Client disconnected from " + description + " with cause: " + cause)
 
     case m: ConnectionClosed ⇒
-      log.debug("Client disconnected from "+workerDescription) // TODO: handle the specific cases
+      log.debug("Client disconnected from " + description) // TODO: handle the specific cases
 
     case Received(bytes: ByteString) ⇒
-      state(sender)(akka.actor.IO.Chunk(bytes))
+      context.parent ! RawServerEvent(sender, bytes)
+
+    case rs: RawServerCommand ⇒
+      // If the message failed, message sequence isn't certain; tear down line to let client recover.
+      if (rs.bs.isFailure)
+        rs.tcpWorker ! ErrorClosed(rs.bs.failed.get.getMessage)
+      else if (writeAck) write(rs.bs.get, rs.tcpWorker) else rs.tcpWorker ! Write(rs.bs.get)
 
     case CommandFailed(cmd: Command) ⇒
       /* If a Nack-based flow control is used, try to resend write message if failed */
       cmd match {
         case w: Write if (!writeAck) ⇒ sender ! w
-        case _                       ⇒ log.debug(workerDescription+" failed command: "+cmd.failureMessage)
+        case _                       ⇒ log.debug(description + " failed command: " + cmd.failureMessage)
       }
 
     case WriteAck ⇒
@@ -71,16 +59,11 @@ trait SentinelServerWorker extends Actor {
       }
   }
 
-  def messageHandler: Receive = Map.empty
-
-  def receive = messageHandler orElse genericMessageHandler
-
   def write(bs: ByteString, tcpWorker: ActorRef) = {
     val writeAvailable = writeState.get(sender).getOrElse(true)
     if (writeAvailable) {
       tcpWorker ! Write(bs, WriteAck)
-    }
-    else {
+    } else {
       if (messQueue.get(sender).isEmpty) messQueue(sender) = Queue[ByteString]()
       val writeQueue = messQueue(sender)
       writeQueue enqueue bs

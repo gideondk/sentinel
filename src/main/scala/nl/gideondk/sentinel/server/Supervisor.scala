@@ -1,48 +1,31 @@
 package nl.gideondk.sentinel.server
 
 import scala.concurrent.duration._
-
 import akka.util.ByteString
-
 import akka.io._
 import akka.io.Tcp._
 import akka.routing._
 import akka.actor._
-
 import akka.actor.IO.IterateeRef
 import akka.event.Logging
-
-import scalaz._
-import Scalaz._
-
 import java.net.InetSocketAddress
-
 import scala.reflect.ClassTag
+import scala.concurrent.Future
 
-trait SentinelServer extends Actor {
-  import akka.io.Tcp._
+class SentinelServer(port: Int, routerConfig: RouterConfig, description: String, worker: ⇒ Actor) extends Actor {
+  //trait SentinelServer extends Actor {
   import context.dispatcher
 
+  val log = Logging(context.system, this)
   val tcp = akka.io.IO(Tcp)(context.system)
 
-  /* Port to which the server should listen to */
-  def port: Int
-  def address = new InetSocketAddress(port)
-
-  /* Router configuration used for Akka Routing */
-  def routerConfig: RouterConfig
-
-  /* Worker class and description */
-  def workerClass: Class[_ <: Actor]
-  def serverDescription: String
-
+  val address = new InetSocketAddress(port)
   val reinitTime: FiniteDuration = 1 second
 
-  val log = Logging(context.system, this)
   var router: Option[ActorRef] = None
 
   def routerProto = {
-    context.system.actorOf(Props(workerClass).withRouter(routerConfig).withDispatcher("nl.gideondk.sentinel.sentinel-server-worker-dispatcher"))
+    context.system.actorOf(Props(worker).withRouter(routerConfig))
   }
 
   def initialize {
@@ -55,7 +38,7 @@ trait SentinelServer extends Actor {
     self ! InitializeServerRouter
   }
 
-  def genericMessageHandler: Receive = {
+  def receive = {
     case InitializeServerRouter ⇒
       initialize
 
@@ -64,67 +47,78 @@ trait SentinelServer extends Actor {
 
     case Terminated(actor) ⇒
       router = None
-      log.debug("Router died, restarting in: "+reinitTime.toString())
+      log.debug("Router died, restarting in: " + reinitTime.toString())
       context.system.scheduler.scheduleOnce(reinitTime, self, ReconnectServerRouter)
 
     case Bound ⇒
-      log.debug(serverDescription+" bound to "+address)
+      log.debug(description + " bound to " + address)
 
     case CommandFailed(cmd) ⇒
       cmd match {
         case x: Bind ⇒
-          log.error(serverDescription+" failed to bind to "+address)
+          log.error(description + " failed to bind to " + address)
       }
 
     case req @ Connected(remoteAddr, localAddr) ⇒
       router.get forward req
   }
 
-  def messageHandler: Receive = Map.empty
-
-  def receive = messageHandler orElse genericMessageHandler
 }
 
 object SentinelServer {
 
   /** Creates a new SentinelServer
    *
-   *  @tparam T worker class to be used for the server
+   *  @tparam Evt event type (type of requests send to server)
+   *  @tparam Cmd command type (type of responses to client)
+   *  @tparam Context context type used in pipeline
    *  @param serverPort the port to host on
    *  @param serverRouterConfig Akka router configuration to be used to route the worker actors
    *  @param description description used for logging purposes
+   *  @param pipelineCtx the context of type Context used in the pipeline
+   *  @param stages the stages used within the pipeline
+   *  @param useWriteAck whether to use ack-based flow control or not
+   *  @return a new sentinel server, hosting on the defined port
    */
 
-  def apply[T <: SentinelServerWorker: ClassTag](serverPort: Int, serverRouterConfig: RouterConfig, description: String = "Sentinel Server")(implicit system: ActorSystem) = {
-    system.actorOf(Props(new SentinelServer {
-      val workerClass = implicitly[ClassTag[T]].runtimeClass.asInstanceOf[Class[_ <: Actor]]
-      val serverDescription = description
-      val port = serverPort
-      val routerConfig = serverRouterConfig
-    }))
+  def apply[Evt, Cmd, Context <: PipelineContext](serverPort: Int, serverRouterConfig: RouterConfig,
+                                                  handler: Evt ⇒ Future[Cmd], description: String = "Sentinel Server")(pipelineCtx: ⇒ Context, stages: PipelineStage[Context, Cmd, ByteString, Evt, ByteString], useWriteAck: Boolean = true)(implicit system: ActorSystem) = {
+    system.actorOf(Props(new SentinelServer(serverPort, serverRouterConfig, description, new SentinelServerWorker[Cmd, Evt, Context](pipelineCtx, stages, handler, description + " Worker", useWriteAck))))
   }
 
-  /** Creates a new SentinelServer which routes to workers randomly
+  /** Creates a new SentinelServer
    *
-   *  @tparam T worker class to be used for the server
+   *  @tparam Evt event type (type of requests send to server)
+   *  @tparam Cmd command type (type of responses to client)
+   *  @tparam Context context type used in pipeline
    *  @param serverPort the port to host on
    *  @param numberOfWorkers the amount of worker actors used to represent the server
-   *  @param description description used for logging purposes
+   *  @param description description used for logging purposespipeline
+   *  @param stages the stages used within the pipeline
+   *  @param useWriteAck whether to use ack-based flow control or not
+   *  @return a new sentinel server, hosting on the defined port
    */
 
-  def randomRouting[T <: SentinelServerWorker: ClassTag](serverPort: Int, numberOfWorkers: Int, description: String = "Sentinel Server")(implicit system: ActorSystem) =
-    apply[T](serverPort, RandomRouter(numberOfWorkers), description)
+  def randomRouting[Evt, Cmd, Context <: PipelineContext](serverPort: Int, numberOfWorkers: Int,
+                                                          handler: Evt ⇒ Future[Cmd], description: String = "Sentinel Server")(pipelineCtx: ⇒ Context, stages: PipelineStage[Context, Cmd, ByteString, Evt, ByteString], useWriteAck: Boolean = true)(implicit system: ActorSystem) =
+    apply(serverPort, RandomRouter(numberOfWorkers), handler, description)(pipelineCtx, stages, useWriteAck)
 
-  /** Creates a new SentinelServer which to workers in a round robin style
+  /** Creates a new SentinelServer
    *
-   *  @tparam T worker class to be used for the server
+   *  @tparam Evt event type (type of requests send to server)
+   *  @tparam Cmd command type (type of responses to client)
+   *  @tparam Context context type used in pipeline
    *  @param serverPort the port to host on
    *  @param numberOfWorkers the amount of worker actors used to represent the server
-   *  @param description description used for logging purposes
+   *  @param description description used for logging purposespipeline
+   *  @param stages the stages used within the pipeline
+   *  @param useWriteAck whether to use ack-based flow control or not
+   *  @return a new sentinel server, hosting on the defined port
    */
 
-  def roundRobinRouting[T <: SentinelServerWorker: ClassTag](serverPort: Int, numberOfWorkers: Int, description: String = "Sentinel Server")(implicit system: ActorSystem) =
-    apply[T](serverPort, RoundRobinRouter(numberOfWorkers), description)
+  def roundRobinRouting[Evt, Cmd, Context <: PipelineContext](serverPort: Int, numberOfWorkers: Int,
+                                                              handler: Evt ⇒ Future[Cmd], description: String = "Sentinel Server")(pipelineCtx: ⇒ Context, stages: PipelineStage[Context, Cmd, ByteString, Evt, ByteString], useWriteAck: Boolean = true)(implicit system: ActorSystem) =
+    apply(serverPort, RoundRobinRouter(numberOfWorkers), handler, description)(pipelineCtx, stages, useWriteAck)
 
 }
 

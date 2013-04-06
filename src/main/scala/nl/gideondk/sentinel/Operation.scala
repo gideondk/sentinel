@@ -8,4 +8,4 @@ import scalaz._
 import Scalaz._
 import effect._
 
-case class SentinelCommand(command: ByteString, promise: Promise[Any])
+case class Operation[A, B](command: A, promise: Promise[B])

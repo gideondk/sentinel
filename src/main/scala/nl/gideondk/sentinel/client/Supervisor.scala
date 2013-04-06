@@ -1,55 +1,33 @@
 package nl.gideondk.sentinel.client
 
-import nl.gideondk.sentinel._
-
-import scala.concurrent.duration.DurationInt
-import scala.concurrent.duration.FiniteDuration
-
-import akka.actor._
-import akka.routing._
-import akka.event.Logging
-
-import scalaz._
-import Scalaz._
-import effect._
-
-import akka.util.ByteString
-import scala.concurrent.Promise
-
-import scala.reflect.ClassTag
-
 import java.net.InetSocketAddress
 
-trait SentinelClient extends Actor {
+import scala.concurrent.duration.{ DurationInt, FiniteDuration }
+
+import akka.actor._
+import akka.event.Logging
+import akka.routing._
+
+import akka.io._
+
+import akka.util.ByteString
+import nl.gideondk.sentinel._
+
+class SentinelClient(address: InetSocketAddress, routerConfig: RouterConfig, description: String,
+                     reconnectDuration: FiniteDuration, worker: ⇒ Actor) extends Actor {
   import context.dispatcher
+  import SentinelClient._
 
   val log = Logging(context.system, this)
-
-  /* Server host and port to connect to */
-  def host: String
-  def port: Int
-  def address = new InetSocketAddress(host, port)
-
-  /* Router configuration used for Akka Routing */
-  def routerConfig: RouterConfig
-
-  /* Client description */
-  def description: String
-
-  /* Worker class and description */
-  def workerClass: Class[_ <: Actor]
-  def workerDescription: String = "SentinelWorker"
-
   var router: Option[ActorRef] = None
-  def reconnectDuration: FiniteDuration
 
   def routerProto = {
-    context.system.actorOf(Props(workerClass).withRouter(routerConfig).withDispatcher("nl.gideondk.sentinel.sentinel-client-worker-dispatcher"))
+    context.system.actorOf(Props(worker).withRouter(routerConfig))
   }
 
   def initialize {
     router = Some(routerProto)
-    router.get ! Broadcast(ConnectToHost(address))
+    router.get ! Broadcast(SentinelClientWorker.ConnectToHost(address))
     context.watch(router.get)
   }
 
@@ -57,7 +35,7 @@ trait SentinelClient extends Actor {
     self ! InitializeRouter
   }
 
-  def genericMessageHandler: Receive = {
+  def receive = {
     case InitializeRouter ⇒
       initialize
 
@@ -67,10 +45,10 @@ trait SentinelClient extends Actor {
     case Terminated(actor) ⇒
       /* If router died, restart after a period of time */
       router = None
-      log.debug("Router died, restarting in: "+reconnectDuration.toString())
+      log.debug("Router died, restarting in: " + reconnectDuration.toString())
       context.system.scheduler.scheduleOnce(reconnectDuration, self, ReconnectRouter)
 
-    case x: SentinelCommand ⇒
+    case x: Operation[_, _] ⇒
       router match {
         case Some(r) ⇒ r forward x
         case None    ⇒ x.promise.failure(NoConnectionException())
@@ -78,76 +56,72 @@ trait SentinelClient extends Actor {
 
     case _ ⇒
   }
-
-  /* Message handler implemented by actor */
-  def messageHandler: Receive = Map.empty
-
-  def receive = messageHandler orElse genericMessageHandler
 }
 
 object SentinelClient {
 
+  private case object InitializeRouter
+  private case object ReconnectRouter
+
+  case class NoConnectionException extends Throwable
+
   /** Creates a new SentinelClient
    *
-   *  @tparam T worker class to be used for the client
-   *  @param serverHost the host to connect to (hostname or ip)
-   *  @param serverPort the port to connect to
-   *  @param clientRouterConfig Akka router configuration to be used to route the worker actors
-   *  @param clientDescription description used for logging purposes
+   *  @tparam Evt event type (type of requests send to server)
+   *  @tparam Cmd command type (type of responses to client)
+   *  @tparam Context context type used in pipeline
+   *  @param serverHost the host to connect to
+   *  @param serverPort the port to to connect to
+   *  @param routerConfig Akka router configuration to be used to route the worker actors
+   *  @param description description used for logging purposes
    *  @param workerReconnectTime the amount of time a client tries to reconnect after disconnection
+   *  @param pipelineCtx the context of type Context used in the pipeline
+   *  @param stages the stages used within the pipeline
+   *  @param useWriteAck whether to use ack-based flow control or not
+   *  @return a new sentinel client, connected on the defined host and port
    */
 
-  def apply[T <: SentinelClientWorker: ClassTag](serverHost: String, serverPort: Int, clientRouterConfig: RouterConfig, clientDescription: String = "Sentinel Client", workerReconnectTime: FiniteDuration = 2 seconds)(implicit system: ActorSystem) = {
-    system.actorOf(Props(new SentinelClient {
-      val workerClass = implicitly[ClassTag[T]].runtimeClass.asInstanceOf[Class[_ <: Actor]]
-      val description = clientDescription
-      val host = serverHost
-      val port = serverPort
-      val routerConfig = clientRouterConfig
-      val reconnectDuration = workerReconnectTime
-    }))
+  def apply[Cmd, Evt, Context <: PipelineContext](serverHost: String, serverPort: Int, routerConfig: RouterConfig,
+                                                  description: String = "Sentinel Client", workerReconnectTime: FiniteDuration = 2 seconds)(pipelineCtx: ⇒ Context, stages: PipelineStage[Context, Cmd, ByteString, Evt, ByteString], useWriteAck: Boolean = true)(implicit system: ActorSystem) = {
+    system.actorOf(Props(new SentinelClient(new InetSocketAddress(serverHost, serverPort), routerConfig, description, workerReconnectTime, new SentinelClientWorker[Cmd, Evt, Context](pipelineCtx, stages, description + " Worker", useWriteAck))))
   }
 
-  /** Creates a new SentinelClient which routes to workers randomly
+  /** Creates a new SentinelClient
    *
-   *  @tparam T worker class to be used for the client
-   *  @param serverHost the host to connect to (hostname or ip)
-   *  @param serverPort the port to connect to
+   *  @tparam Evt event type (type of requests send to server)
+   *  @tparam Cmd command type (type of responses to client)
+   *  @tparam Context context type used in pipeline
+   *  @param serverHost the host to connect to
+   *  @param serverPort the port to to connect to
    *  @param numberOfWorkers the amount of worker actors used to connect to the server
-   *  @param clientDescription description used for logging purposes
+   *  @param description description used for logging purposes
    *  @param workerReconnectTime the amount of time a client tries to reconnect after disconnection
+   *  @param pipelineCtx the context of type Context used in the pipeline
+   *  @param stages the stages used within the pipeline
+   *  @param useWriteAck whether to use ack-based flow control or not
+   *  @return a new sentinel client, connected on the defined host and port
    */
-  def randomRouting[T <: SentinelClientWorker: ClassTag](serverHost: String, serverPort: Int, numberOfWorkers: Int, description: String = "Sentinel Client", workerReconnectTime: FiniteDuration = 2 seconds)(implicit system: ActorSystem) =
-    apply[T](serverHost, serverPort, RandomRouter(numberOfWorkers), description, workerReconnectTime)
 
-  /** Creates a new SentinelClient which routes to workers in a round robin style
+  def randomRouting[Cmd, Evt, Context <: PipelineContext](serverHost: String, serverPort: Int, numberOfWorkers: Int, description: String = "Sentinel Client", workerReconnectTime: FiniteDuration = 2 seconds)(pipelineCtx: ⇒ Context, stages: PipelineStage[Context, Cmd, ByteString, Evt, ByteString], useWriteAck: Boolean = true)(implicit system: ActorSystem) =
+    apply[Cmd, Evt, Context](serverHost, serverPort, RandomRouter(numberOfWorkers), description, workerReconnectTime)(pipelineCtx, stages, useWriteAck)
+
+  /** Creates a new SentinelClient
    *
-   *  @tparam T worker class to be used for the client
-   *  @param serverHost the host to connect to (hostname or ip)
-   *  @param serverPort the port to connect to
+   *  @tparam Evt event type (type of requests send to server)
+   *  @tparam Cmd command type (type of responses to client)
+   *  @tparam Context context type used in pipeline
+   *  @param serverHost the host to connect to
+   *  @param serverPort the port to to connect to
    *  @param numberOfWorkers the amount of worker actors used to connect to the server
-   *  @param clientDescription description used for logging purposes
+   *  @param description description used for logging purposes
    *  @param workerReconnectTime the amount of time a client tries to reconnect after disconnection
+   *  @param pipelineCtx the context of type Context used in the pipeline
+   *  @param stages the stages used within the pipeline
+   *  @param useWriteAck whether to use ack-based flow control or not
+   *  @return a new sentinel client, connected on the defined host and port
    */
-  def roundRobinRouting[T <: SentinelClientWorker: ClassTag](serverHost: String, serverPort: Int, numberOfWorkers: Int, description: String = "Sentinel Client", workerReconnectTime: FiniteDuration = 2 seconds)(implicit system: ActorSystem) =
-    apply[T](serverHost, serverPort, RoundRobinRouter(numberOfWorkers), description, workerReconnectTime)
+
+  def roundRobinRouting[Cmd, Evt, Context <: PipelineContext](serverHost: String, serverPort: Int, numberOfWorkers: Int, description: String = "Sentinel Client", workerReconnectTime: FiniteDuration = 2 seconds)(pipelineCtx: ⇒ Context, stages: PipelineStage[Context, Cmd, ByteString, Evt, ByteString], useWriteAck: Boolean = true)(implicit system: ActorSystem) =
+    apply[Cmd, Evt, Context](serverHost, serverPort, RoundRobinRouter(numberOfWorkers), description, workerReconnectTime)(pipelineCtx, stages, useWriteAck)
 
 }
-
-final class AskableSentinelClient(val clientActorRef: ActorRef) extends AnyVal {
-  def ??(command: ByteString) = {
-    val ioAction = {
-      val promise = Promise[Any]()
-      clientActorRef ! SentinelCommand(command, promise)
-      promise
-    }.point[IO]
-
-    ValidatedFutureIO(ioAction.map(x ⇒ ValidatedFuture(x.future)))
-  }
-}
-
-private case object InitializeRouter
-
-private case object ReconnectRouter
-
-case class NoConnectionException extends Throwable
