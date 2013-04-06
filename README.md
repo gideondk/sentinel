@@ -87,8 +87,8 @@ The server follow practically the same route as the client, with one big differe
 
 	def handle(event: PingPongMessageFormat): Future[PingPongMessageFormat] = {
     	event.s match {
-      	case "PING" ⇒ Future(PingPongMessageFormat("PONG"))
-      	case _      ⇒ Future.failed(new Exception("Unknown command"))
+      	    case "PING" ⇒ Future(PingPongMessageFormat("PONG"))
+      	    case _      ⇒ Future.failed(new Exception("Unknown command"))
     	}
   	}
 
