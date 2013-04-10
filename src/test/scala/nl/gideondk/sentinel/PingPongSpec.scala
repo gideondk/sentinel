@@ -69,11 +69,12 @@ object PingPongTestHelper {
   val stages = new PingPongMessageStage >> new LengthFieldFrame(1000)
 
   lazy val (pingServer: ActorRef, pingClient: ActorRef) = {
-    implicit val actorSystem = akka.actor.ActorSystem("test-system")
-    val pingServer = SentinelServer.randomRouting(9999, 16, PingPongServerHandler.handle, "Ping Server")(ctx, stages, false)
+    val clientSystem = akka.actor.ActorSystem("client-system")
+    val pingServer = SentinelServer.randomRouting(9999, 16, PingPongServerHandler.handle, "Ping Server")(ctx, stages, false)(clientSystem)
     Thread.sleep(1000)
 
-    val pingClient = SentinelClient.randomRouting("localhost", 9999, 4, "Ping Client")(ctx, stages, false)
+    val serverSystem = akka.actor.ActorSystem("server-system")
+    val pingClient = SentinelClient.randomRouting("localhost", 9999, 4, "Ping Client")(ctx, stages, false)(serverSystem)
     (pingServer, pingClient)
   }
 }
