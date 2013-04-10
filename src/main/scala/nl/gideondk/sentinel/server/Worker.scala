@@ -109,9 +109,5 @@ private[sentinel] object SentinelServerWorker {
 
   /* Worker exceptions */
   trait WorkerConnectionException extends Exception
-
-  case class PeerDisconnectedException extends WorkerConnectionException
-  case class DisconnectException extends WorkerConnectionException
-  case class DiconnectExceptionWithCause(c: String) extends WorkerConnectionException
 }
 

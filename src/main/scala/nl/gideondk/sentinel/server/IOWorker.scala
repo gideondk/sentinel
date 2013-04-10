@@ -29,9 +29,11 @@ class SentinelServerIOWorker(description: String, writeAck: Boolean) extends Act
 
     case ErrorClosed(cause) ⇒
       log.error("Client disconnected from " + description + " with cause: " + cause)
+      cleanupTCPWorker(sender)
 
     case m: ConnectionClosed ⇒
       log.debug("Client disconnected from " + description) // TODO: handle the specific cases
+      cleanupTCPWorker(sender)
 
     case Received(bytes: ByteString) ⇒
       context.parent ! RawServerEvent(sender, bytes)
@@ -68,5 +70,10 @@ class SentinelServerIOWorker(description: String, writeAck: Boolean) extends Act
       val writeQueue = messQueue(sender)
       writeQueue enqueue bs
     }
+  }
+
+  def cleanupTCPWorker(actor: ActorRef) = {
+    writeState -= actor
+    messQueue -= actor
   }
 }

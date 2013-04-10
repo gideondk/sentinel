@@ -17,10 +17,10 @@ object ValidatedFuture {
       ValidatedFuture(fa.run.map(validation ⇒ validation map f))
 
     def bind[A, B](fa: ValidatedFuture[A])(f: A ⇒ ValidatedFuture[B]) =
-      ValidatedFuture(fa.run.flatMap(validation ⇒ validation match {
+      ValidatedFuture(fa.run.flatMap {
         case Success(succ) ⇒ f(succ).run
         case Failure(fail) ⇒ Future(fail.failure)
-      }))
+      })
   }
 
   def apply[T](a: ⇒ Future[T]): ValidatedFuture[T] = ValidatedFuture((a.map(_.success) recover {
