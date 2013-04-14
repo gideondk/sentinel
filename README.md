@@ -40,7 +40,15 @@ You can install Sentinel through source (by publishing it into your local Ivy re
 ./sbt publish-local
 ```
 
-(Repository will follow soon…)
+Or by adding the repo:
+<notextile><pre><code>"gideondk-repo" at "https://raw.github.com/gideondk/gideondk-mvn-repo/master"</code></pre></notextile>
+
+to your SBT configuration and adding the `SNAPSHOT` to your library dependencies:
+
+<notextile><pre><code>libraryDependencies ++= Seq(
+  "nl.gideondk" %% "sentinel" % "0.2.1"
+)
+</code></pre></notextile>
 
 ## Usage
 ### Pipelines
