@@ -22,8 +22,8 @@ object ApplicationBuild extends Build {
     )
 
   val appDependencies = Seq(
-    "org.scalaz" %% "scalaz-core" % "7.0.0-M7" withSources(),
-    "org.scalaz" %% "scalaz-effect" % "7.0.0-M7" withSources(),
+    "org.scalaz" %% "scalaz-core" % "7.0.0-RC1" withSources(),
+    "org.scalaz" %% "scalaz-effect" % "7.0.0-RC1" withSources(),
     "org.specs2" %% "specs2" % "1.13",
 
     "com.chuusai" % "shapeless_2.10.0" % "1.2.4",
