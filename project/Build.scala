@@ -8,7 +8,7 @@ object ApplicationBuild extends Build {
   override lazy val settings = super.settings ++
     Seq(
       name := "sentinel",
-      version := "0.2.1",
+      version := "0.2.2",
       organization := "nl.gideondk",
       scalaVersion := "2.10.0",
       parallelExecution in Test := false,
@@ -16,7 +16,9 @@ object ApplicationBuild extends Build {
         "Sonatype OSS Releases" at "http://oss.sonatype.org/content/repositories/releases/",
         "Sonatype OSS Snapshots" at "http://oss.sonatype.org/content/repositories/snapshots/",
         "Typesafe Snapshots" at "http://repo.typesafe.com/typesafe/snapshots/",
-        "Typesafe Repository" at "http://repo.typesafe.com/typesafe/releases/")
+        "Typesafe Repository" at "http://repo.typesafe.com/typesafe/releases/"),
+      
+      publishTo := Some(Resolver.file("file", new File("/Users/gideondk/Development/gideondk-mvn-repo")))
     )
 
   val appDependencies = Seq(
@@ -25,7 +27,7 @@ object ApplicationBuild extends Build {
     "org.specs2" %% "specs2" % "1.13",
 
     "com.chuusai" % "shapeless_2.10.0" % "1.2.4",
-    "com.typesafe.akka" % "akka-actor_2.10" % "2.2-20130410-001403"
+    "com.typesafe.akka" % "akka-actor_2.10" % "2.2-20130416-001427"
   )
 
   lazy val root = Project(id = "sentinel",
@@ -38,7 +40,6 @@ object ApplicationBuild extends Build {
 }
 
 object Format {
-
   import com.typesafe.sbt.SbtScalariform._
 
   lazy val settings = scalariformSettings ++ Seq(

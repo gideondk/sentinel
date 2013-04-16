@@ -80,8 +80,6 @@ object PingPongTestHelper {
 }
 
 class PingPongSpec extends Specification {
-  //ServerClientTestHelper.init
-
   "A client" should {
     "be able to ping to the server" in {
       val v = (PingPongTestHelper.pingClient <~< PingPongMessageFormat("PING")).unsafeFulFill.toOption.get
