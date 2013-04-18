@@ -42,11 +42,12 @@ object LargerPayloadTestHelper {
   val stages = new LengthFieldFrame(1024 * 1024 * 1024) // 1Gb
 
   lazy val (server: ActorRef, client: ActorRef) = {
-    implicit val actorSystem = akka.actor.ActorSystem("test-system")
-    val server = SentinelServer.randomRouting(7777, 32, LargerPayloadServerHandler.handle, "File Server")(ctx, stages, true)
+    val serverSystem = akka.actor.ActorSystem("server-system")
+    val server = SentinelServer(7777, LargerPayloadServerHandler.handle, "File Server")(ctx, stages, 100)(serverSystem)
     Thread.sleep(1000)
 
-    val client = SentinelClient.randomRouting("localhost", 7777, 4, "File Client")(ctx, stages, true)
+    val clientSystem = akka.actor.ActorSystem("client-system")
+    val client = SentinelClient.randomRouting("localhost", 7777, 32, "File Client")(ctx, stages, 100)(clientSystem)
     (server, client)
   }
 

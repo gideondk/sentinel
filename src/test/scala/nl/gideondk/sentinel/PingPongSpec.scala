@@ -69,12 +69,13 @@ object PingPongTestHelper {
   val stages = new PingPongMessageStage >> new LengthFieldFrame(1000)
 
   lazy val (pingServer: ActorRef, pingClient: ActorRef) = {
-    val clientSystem = akka.actor.ActorSystem("client-system")
-    val pingServer = SentinelServer.randomRouting(9999, 16, PingPongServerHandler.handle, "Ping Server")(ctx, stages, false)(clientSystem)
+    val serverSystem = akka.actor.ActorSystem("ping-server-system")
+    val pingServer = SentinelServer(9999, PingPongServerHandler.handle, "Ping Server")(ctx, stages, 5)(serverSystem)
     Thread.sleep(1000)
 
-    val serverSystem = akka.actor.ActorSystem("server-system")
-    val pingClient = SentinelClient.randomRouting("localhost", 9999, 4, "Ping Client")(ctx, stages, false)(serverSystem)
+    val clientSystem = akka.actor.ActorSystem("ping-client-system")
+
+    val pingClient = SentinelClient.randomRouting("localhost", 9999, 32, "Ping Client")(ctx, stages, 5)(clientSystem)
     (pingServer, pingClient)
   }
 }
@@ -90,6 +91,7 @@ class PingPongSpec extends Specification {
 
     "be able to ping to the server in timely fashion" in {
       val num = 200000
+
       val mulActs = for (i ← 1 to num) yield (PingPongTestHelper.pingClient <~< PingPongMessageFormat("PING"))
       val tasks = Task.sequenceSuccesses(mulActs.toList)
 
@@ -98,9 +100,10 @@ class PingPongSpec extends Specification {
         Await.result(fut, Duration.apply(10, scala.concurrent.duration.SECONDS))
         true
       }
+
       val res = Await.result(fut, Duration.apply(10, scala.concurrent.duration.SECONDS))
       res.get.filterNot(_ == PingPongMessageFormat("PONG")).length == 0
-      true
     }
+
   }
 }

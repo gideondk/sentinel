@@ -65,10 +65,10 @@ object SequenceTestHelper {
 
   lazy val (server: ActorRef, client: ActorRef) = {
     implicit val actorSystem = akka.actor.ActorSystem("test-system")
-    val server = SentinelServer.randomRouting(8888, 32, SequenceServerHandler.handle, "Ping Server")(ctx, stages, true)
+    val server = SentinelServer(8888, SequenceServerHandler.handle, "Ping Server")(ctx, stages, 10)
     Thread.sleep(1000)
 
-    val client = SentinelClient.randomRouting("localhost", 8888, 4, "Ping Client")(ctx, stages, true)
+    val client = SentinelClient.randomRouting("localhost", 8888, 4, "Ping Client")(ctx, stages, 10)
     (server, client)
   }
 }

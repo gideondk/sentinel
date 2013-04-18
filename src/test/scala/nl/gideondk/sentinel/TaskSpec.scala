@@ -61,8 +61,12 @@ class TaskSpec extends Specification {
       val s2 = 2.point[Task]
       val f1 = Task(Future.failed(new Exception("")))
 
+      val f: Task[Int] ⇒ String = ((t: Task[Int]) ⇒ t.copoint + "123")
+      s1.cobind(f)
+
       val tasks = Task.sequenceSuccesses(List(s1, f1, s2))
       tasks.run.get.length == 2
     }
+
   }
 }
