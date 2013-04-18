@@ -23,7 +23,7 @@ In overall, treat Sentinel as pre-release alpha software.
 * Easy initialization of servers and clients for default or custom router worker strategies;
 * Supervision (and restart / reconnection functionality) on both server and client for a defined number of workers;
 * Default implementations for both Ack as Noack based flow control;
-* Sequencing and continuing multiple client operations using monad transformers (ValidatedFuture, ValidatedFutureIO).
+* Sequencing and continuing multiple client operations using `Task`s
 
 The following is currently missing in Sentinel, but will be added soon:
 
@@ -46,7 +46,7 @@ Or by adding the repo:
 to your SBT configuration and adding the `SNAPSHOT` to your library dependencies:
 
 <notextile><pre><code>libraryDependencies ++= Seq(
-  "nl.gideondk" %% "sentinel" % "0.2.3"
+  "nl.gideondk" %% "sentinel" % "0.3"
 )
 </code></pre></notextile>
 
@@ -123,16 +123,16 @@ Noack based flow control should give better performance in most cases, since it 
 
 ### Client usage
 
-Once a client and / or server has been set up, the `<~<` method can be used on the client to send a command to the connected server. Results are wrapped into a `ValidatedFutureIO` Monad transformer containing the type `Evt` defined in the incoming stage of the client.
+Once a client and / or server has been set up, the `<~<` method can be used on the client to send a command to the connected server. Results are wrapped into a `Task` containing the type `Evt` defined in the incoming stage of the client.
 
 ```scala
 PingPongTestHelper.pingClient <~< PingPongMessageFormat("PING")
-res0: ValidatedFutureIO[PingPongMessageFormat]
+res0: Task[PingPongMessageFormat]
 ```
 
-`ValidatedFutureIO` combines a `Validation`, `Future` and `IO` Monad into one type:  exceptions will be caught in the Validation, all async actions are abstracted into a future monad and all IO actions are as pure as possible by using the Scalaz IO monad.
+`Task` combines a `Try`, `Future` and `IO` Monad into one type:  exceptions will be caught in the Try, all async actions are abstracted into a future monad and all IO actions are as pure as possible by using the Scalaz IO monad.
 
-Use `unsafePerformIO` to expose the Future, or use `unsafeFulFill(d: Duration)` to perform IO and wait (blocking) on the future.
+Use `run` to expose the Future, or use `start(d: Duration)` to perform IO and wait (blocking) on the future.
 
 This bare bone approach to sending / receiving messages is focussed on the idea that a higher-level API on top of Sentinel is responsible to make client usage more comfortable. 
 
