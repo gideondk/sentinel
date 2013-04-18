@@ -1,6 +1,6 @@
 package nl.gideondk.sentinel
 
-import ValidatedFutureIO._
+import Task._
 import server._
 import client._
 import org.specs2.mutable.Specification
@@ -62,8 +62,8 @@ object LargerPayloadTestHelper {
 
   def sendActionsForBS(bs: ByteString, num: Int) = {
     val mulActs = for (i ← 1 to num) yield (LargerPayloadTestHelper.client <~< bs)
-    val ioActs = mulActs.toList.map(_.run).sequence
-    ioActs.map(x ⇒ Future.sequence(x.map(_.run)))
+    val ioActs = mulActs.toList.map(_.get).sequence
+    ioActs.map(x ⇒ Future.sequence(x))
   }
 }
 

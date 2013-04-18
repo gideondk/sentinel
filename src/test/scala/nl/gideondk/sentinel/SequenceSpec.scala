@@ -1,6 +1,6 @@
 package nl.gideondk.sentinel
 
-import ValidatedFutureIO._
+import Task._
 import server._
 import client._
 import org.specs2.mutable.Specification
@@ -80,10 +80,10 @@ class SequenceSpec extends Specification {
     "retrieve items in correct sequence" in {
       val num = 5000
       val sequence = for (i ← 0 to num) yield SequenceMessageFormat(i)
-      val mulActs = ValidatedFutureIO.sequence(sequence.map(x ⇒ SequenceTestHelper.client <~< x).toList)
+      val mulActs = Task.sequence(sequence.map(x ⇒ SequenceTestHelper.client <~< x).toList)
 
-      val res = mulActs.unsafeFulFill
-      res.toOption.get.corresponds(sequence) { _ == _ }
+      val res = mulActs.run(Duration.apply(10, scala.concurrent.duration.SECONDS))
+      res.get.corresponds(sequence) { _ == _ }
     }
   }
 }

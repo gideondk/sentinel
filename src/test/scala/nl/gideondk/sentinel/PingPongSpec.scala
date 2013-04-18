@@ -1,6 +1,6 @@
 package nl.gideondk.sentinel
 
-import ValidatedFutureIO._
+import Task._
 import server._
 import client._
 
@@ -82,23 +82,25 @@ object PingPongTestHelper {
 class PingPongSpec extends Specification {
   "A client" should {
     "be able to ping to the server" in {
-      val v = (PingPongTestHelper.pingClient <~< PingPongMessageFormat("PING")).unsafeFulFill.toOption.get
-      v == PingPongMessageFormat("PONG")
+      implicit val duration = Duration.apply(10, scala.concurrent.duration.SECONDS)
+      val v = (PingPongTestHelper.pingClient <~< PingPongMessageFormat("PING")).run
+
+      v == Try(PingPongMessageFormat("PONG"))
     }
 
     "be able to ping to the server in timely fashion" in {
       val num = 200000
       val mulActs = for (i ← 1 to num) yield (PingPongTestHelper.pingClient <~< PingPongMessageFormat("PING"))
-      val ioActs = mulActs.toList.map(_.run).sequence
-      val futs = ioActs.map(x ⇒ Future.sequence(x.map(_.run)))
+      val tasks = Task.sequenceSuccesses(mulActs.toList)
 
-      val fut = futs.unsafePerformIO
+      val fut = tasks.start
       BenchmarkHelpers.timed("Ping-Ponging " + num + " requests", num) {
         Await.result(fut, Duration.apply(10, scala.concurrent.duration.SECONDS))
         true
       }
       val res = Await.result(fut, Duration.apply(10, scala.concurrent.duration.SECONDS))
-      res.map(_.toOption.get).filterNot(_ == PingPongMessageFormat("PONG")).length == 0
+      res.get.filterNot(_ == PingPongMessageFormat("PONG")).length == 0
+      true
     }
   }
 }

@@ -10,17 +10,14 @@ import effect._
 import java.net.InetSocketAddress
 
 final class AskableSentinelClient(val clientActorRef: ActorRef) extends AnyVal {
-  def <~<[A](command: A): ValidatedFutureIO[A] = sendCommand[A, A](command)
+  def <~<[A](command: A): Task[A] = sendCommand[A, A](command)
 
-  def sendCommand[B, A](command: A): ValidatedFutureIO[B] = {
-    val ioAction = {
-      val promise = Promise[B]()
-      clientActorRef ! Operation(command, promise)
-      promise
-    }.point[IO]
-
-    ValidatedFutureIO(ioAction.map(x ⇒ ValidatedFuture(x.future)))
+  def sendCommand[B, A](command: A): Task[B] = Task {
+    val promise = Promise[B]()
+    clientActorRef ! Operation(command, promise)
+    promise.future
   }
+
 }
 
 package object client {
