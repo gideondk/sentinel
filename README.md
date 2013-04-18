@@ -22,12 +22,12 @@ In overall, treat Sentinel as pre-release alpha software.
 * Easy creation of reactive TCP servers / clients;
 * Easy initialization of servers and clients for default or custom router worker strategies;
 * Supervision (and restart / reconnection functionality) on both server and client for a defined number of workers;
-* Default implementations for both Ack as Noack based flow control;
-* Sequencing and continuing multiple client operations using `Task`s
+* Default implementation for flow control;
+* Sequencing and continuing multiple client operations using `Tasks`;
+* Handling of read / write interests.
 
 The following is currently missing in Sentinel, but will be added soon:
 
-* Handling of read interests;
 * More robust benchmarks for CPU / IO bound services to test router / worker strategies;
 * Better error handling and recovery;
 * Server to client communication;
@@ -46,7 +46,7 @@ Or by adding the repo:
 to your SBT configuration and adding the `SNAPSHOT` to your library dependencies:
 
 <notextile><pre><code>libraryDependencies ++= Seq(
-  "nl.gideondk" %% "sentinel" % "0.3.0"
+  "nl.gideondk" %% "sentinel" % "0.4.0"
 )
 </code></pre></notextile>
 
@@ -89,7 +89,7 @@ def ctx = new HasByteOrder {
 After the definition of the pipeline, a client is easily created:
 
 ```scala
-SentinelClient.randomRouting("localhost", 9999, 4, "Ping Client")(ctx, stages, false)
+SentinelClient.randomRouting("localhost", 9999, 4, "Ping Client")(ctx, stages)
 ```
 
 Defining the host and port where the client should connect to, the amount of workers used to handle commands / events, description of the client and the earlier defined context and stages (for the complete list of parameters, check the code for the moment). 
@@ -113,13 +113,8 @@ The return type of `Cmd` should be wrapped into a `Future`, this makes it able t
 After the definition of the handler, the server can be defined in same fashion as the client: 
 
 ```scala
-SentinelServer.randomRouting(9999, 16, PingPongServerHandler.handle, "Ping Server")(ctx, stages, false)
+SentinelServer(9999, PingPongServerHandler.handle, "Ping Server")(ctx, stages)
 ```
-
-### Ack vs Noack
-Sentinel implements both Ack as Noack based flow-control. Ack based flow-control is implemented through a queue, dequeuing the next command when the underlying TCP actor has successfully send the previous command. 
-
-Noack based flow control should give better performance in most cases, since it only resends failed messages, but isn't suited in environments where the order of commands is important (since a failed command A can be resend later then the successful B and C commands). 
 
 ### Client usage
 

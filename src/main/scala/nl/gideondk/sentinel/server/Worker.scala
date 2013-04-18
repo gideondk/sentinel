@@ -21,7 +21,7 @@ import scala.util.Try
 import scala.collection._
 
 class SentinelServerWorker[Cmd, Evt, Context <: PipelineContext](pipelineCtx: ⇒ Context, stages: PipelineStage[Context, Cmd, ByteString, Evt, ByteString], handler: Evt ⇒ Future[Cmd],
-                                                                 workerDescription: String = "Sentinel Client Worker", ackCount: Int = 10) extends Actor {
+                                                                 workerDescription: String = "Sentinel Client Worker", ackCount: Int, maxBufferSize: Long) extends Actor {
 
   import SentinelServerWorker._
   import context.dispatcher
@@ -32,7 +32,7 @@ class SentinelServerWorker[Cmd, Evt, Context <: PipelineContext](pipelineCtx: �
 
   val responseQueue = mutable.Queue[Promise[HandleServerResponse[Cmd]]]()
 
-  val ioWorker = context.actorOf(Props(new SentinelServerIOWorker(workerDescription + "-IO", ackCount)).withDispatcher("nl.gideondk.sentinel.sentinel-client-worker-dispatcher"))
+  val ioWorker = context.actorOf(Props(new SentinelServerIOWorker(workerDescription + "-IO", ackCount, maxBufferSize)).withDispatcher("nl.gideondk.sentinel.sentinel-client-worker-dispatcher"))
 
   /* Request / reponse pipeline */
   val pipeline = PipelineFactory.buildWithSinkFunctions(pipelineCtx, stages)(cmd ⇒ ioWorker ! RawServerCommand(cmd), evt ⇒ self ! HandleServerEvent(evt))

@@ -13,7 +13,7 @@ import java.net.InetSocketAddress
 import nl.gideondk.sentinel._
 
 class SentinelClientWorker[Cmd, Evt, Context <: PipelineContext](pipelineCtx: ⇒ Context, stages: PipelineStage[Context, Cmd, ByteString, Evt, ByteString],
-                                                                 workerDescription: String = "Sentinel Client Worker", toAckCount: Int = 10) extends Actor {
+                                                                 workerDescription: String = "Sentinel Client Worker", toAckCount: Int, maxBufferSize: Long) extends Actor {
   import context.dispatcher
   import SentinelClientWorker._
 
@@ -23,7 +23,7 @@ class SentinelClientWorker[Cmd, Evt, Context <: PipelineContext](pipelineCtx: �
   val requests = Queue[Operation[Cmd, Evt]]()
 
   /* IO actor (manages connections) */
-  val ioActor = context.actorOf(Props(new SentinelClientIOWorker(workerDescription + "-IO", toAckCount)).withDispatcher("nl.gideondk.sentinel.sentinel-client-worker-dispatcher"))
+  val ioActor = context.actorOf(Props(new SentinelClientIOWorker(workerDescription + "-IO", toAckCount, maxBufferSize)).withDispatcher("nl.gideondk.sentinel.sentinel-client-worker-dispatcher"))
 
   /* Request / reponse pipeline */
   val pipeline = PipelineFactory.buildWithSinkFunctions(pipelineCtx, stages)(cmd ⇒ ioActor ! RawCommand(cmd.get), evt ⇒ self ! HandleEvent(evt.get))

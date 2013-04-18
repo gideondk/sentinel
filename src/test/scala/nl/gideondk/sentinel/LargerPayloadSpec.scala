@@ -43,11 +43,11 @@ object LargerPayloadTestHelper {
 
   lazy val (server: ActorRef, client: ActorRef) = {
     val serverSystem = akka.actor.ActorSystem("server-system")
-    val server = SentinelServer(7777, LargerPayloadServerHandler.handle, "File Server")(ctx, stages, 100)(serverSystem)
+    val server = SentinelServer(7777, LargerPayloadServerHandler.handle, "File Server")(ctx, stages, 10)(serverSystem)
     Thread.sleep(1000)
 
     val clientSystem = akka.actor.ActorSystem("client-system")
-    val client = SentinelClient.randomRouting("localhost", 7777, 32, "File Client")(ctx, stages, 100)(clientSystem)
+    val client = SentinelClient.randomRouting("localhost", 7777, 32, "File Client")(ctx, stages, 10)(clientSystem)
     (server, client)
   }
 
@@ -71,6 +71,20 @@ object LargerPayloadTestHelper {
 class LargerPayloadSpec extends Specification {
   sequential
   import LargerPayloadTestHelper._
+
+  "A 0.1mb payload" should {
+    "be able to be send correctly" in {
+      val bs = randomBSForSize((1024 * 1024 * 0.1).toInt)
+      val num = 500
+      val fut = sendActionsForBS(bs, num).unsafePerformIO
+
+      BenchmarkHelpers.throughput("Sending " + num + " requests of " + bs.length / 1024.0 / 1024.0 + " mb", bs.length / 1024.0 / 1024.0, num) {
+        Await.result(fut, Duration.apply(20, scala.concurrent.duration.SECONDS))
+        true
+      }
+      true
+    }
+  }
 
   "A 0.5mb payload" should {
     "be able to be send correctly" in {

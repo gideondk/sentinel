@@ -14,7 +14,7 @@ import akka.util.ByteString
 import scalaz.Scalaz._
 import nl.gideondk.sentinel._
 
-class SentinelServerIOWorker(val description: String, val ackCount: Int = 10) extends SentinelIOWorker {
+class SentinelServerIOWorker(val description: String, val ackCount: Int = 10, val maxBufferSize: Long = 1024L * 1024L * 50L) extends SentinelIOWorker {
   import SentinelServerWorker._
 
   def baseHandler = {

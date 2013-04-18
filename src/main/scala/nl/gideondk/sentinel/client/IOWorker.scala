@@ -14,7 +14,7 @@ import akka.util.ByteString
 import scalaz.Scalaz._
 import nl.gideondk.sentinel._
 
-class SentinelClientIOWorker(val description: String, val ackCount: Int = 10) extends SentinelIOWorker {
+class SentinelClientIOWorker(val description: String, val ackCount: Int = 10, val maxBufferSize: Long = 1024L * 1024L * 50L) extends SentinelIOWorker {
   import SentinelClientWorker._
 
   val tcp = akka.io.IO(Tcp)(context.system)
@@ -37,7 +37,8 @@ class SentinelClientIOWorker(val description: String, val ackCount: Int = 10) ex
       /* Unstash all requests, send prior to the server connection */
       unstashAll()
 
-    case c: RawCommand  ⇒ self ! WriteToTCPWorker(c.bs)
+    case c: RawCommand ⇒
+      self ! WriteToTCPWorker(c.bs)
 
     case Received(data) ⇒ context.parent ! RawEvent(data)
   }

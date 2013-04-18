@@ -35,12 +35,15 @@ class SequenceMessageStage extends SymmetricPipelineStage[HasByteOrder, Sequence
     override val commandPipeline = { msg: SequenceMessageFormat ⇒
       val bsb = new ByteStringBuilder()
       bsb.putLong(msg.l)
+      bsb ++= LargerPayloadTestHelper.randomBSForSize((1024 * 1024 * 1).toInt) // 1MB
       Seq(Right(bsb.result))
     }
 
     override val eventPipeline = { bs: ByteString ⇒
       val bi = bs.iterator
-      Seq(Left(SequenceMessageFormat(bi.getLong)))
+      val long = bi.getLong
+      val rest = bi.toByteString
+      Seq(Left(SequenceMessageFormat(long)))
     }
   }
 }
@@ -61,14 +64,14 @@ object SequenceTestHelper {
     def byteOrder = java.nio.ByteOrder.BIG_ENDIAN
   }
 
-  val stages = new SequenceMessageStage >> new LengthFieldFrame(1000)
+  val stages = new SequenceMessageStage >> new LengthFieldFrame(1024 * 1024 * 10)
 
   lazy val (server: ActorRef, client: ActorRef) = {
     implicit val actorSystem = akka.actor.ActorSystem("test-system")
-    val server = SentinelServer(8888, SequenceServerHandler.handle, "Ping Server")(ctx, stages, 10)
+    val server = SentinelServer(8888, SequenceServerHandler.handle, "Ping Server")(ctx, stages, 1)
     Thread.sleep(1000)
 
-    val client = SentinelClient.randomRouting("localhost", 8888, 4, "Ping Client")(ctx, stages, 10)
+    val client = SentinelClient.randomRouting("localhost", 8888, 4, "Ping Client")(ctx, stages, 1)
     (server, client)
   }
 }
@@ -78,7 +81,7 @@ class SequenceSpec extends Specification {
 
   "A client" should {
     "retrieve items in correct sequence" in {
-      val num = 5000
+      val num = 100
       val sequence = for (i ← 0 to num) yield SequenceMessageFormat(i)
       val mulActs = Task.sequence(sequence.map(x ⇒ SequenceTestHelper.client <~< x).toList)
 

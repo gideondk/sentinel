@@ -82,8 +82,8 @@ object SentinelClient {
    */
 
   def apply[Cmd, Evt, Context <: PipelineContext](serverHost: String, serverPort: Int, routerConfig: RouterConfig,
-                                                  description: String = "Sentinel Client", workerReconnectTime: FiniteDuration = 2 seconds)(pipelineCtx: ⇒ Context, stages: PipelineStage[Context, Cmd, ByteString, Evt, ByteString], ackCount: Int = 10)(implicit system: ActorSystem) = {
-    system.actorOf(Props(new SentinelClient(new InetSocketAddress(serverHost, serverPort), routerConfig, description, workerReconnectTime, new SentinelClientWorker[Cmd, Evt, Context](pipelineCtx, stages, description + " Worker", ackCount))))
+                                                  description: String = "Sentinel Client", workerReconnectTime: FiniteDuration = 2 seconds)(pipelineCtx: ⇒ Context, stages: PipelineStage[Context, Cmd, ByteString, Evt, ByteString], ackCount: Int = 10, maxBufferSize: Long = 1024L * 1024L * 50L)(implicit system: ActorSystem) = {
+    system.actorOf(Props(new SentinelClient(new InetSocketAddress(serverHost, serverPort), routerConfig, description, workerReconnectTime, new SentinelClientWorker[Cmd, Evt, Context](pipelineCtx, stages, description + " Worker", ackCount, maxBufferSize))))
   }
 
   /** Creates a new SentinelClient
@@ -102,8 +102,8 @@ object SentinelClient {
    *  @return a new sentinel client, connected on the defined host and port
    */
 
-  def randomRouting[Cmd, Evt, Context <: PipelineContext](serverHost: String, serverPort: Int, numberOfWorkers: Int, description: String = "Sentinel Client", workerReconnectTime: FiniteDuration = 2 seconds)(pipelineCtx: ⇒ Context, stages: PipelineStage[Context, Cmd, ByteString, Evt, ByteString], ackCount: Int = 10)(implicit system: ActorSystem) =
-    apply[Cmd, Evt, Context](serverHost, serverPort, RandomRouter(numberOfWorkers), description, workerReconnectTime)(pipelineCtx, stages, ackCount)
+  def randomRouting[Cmd, Evt, Context <: PipelineContext](serverHost: String, serverPort: Int, numberOfWorkers: Int, description: String = "Sentinel Client", workerReconnectTime: FiniteDuration = 2 seconds)(pipelineCtx: ⇒ Context, stages: PipelineStage[Context, Cmd, ByteString, Evt, ByteString], ackCount: Int = 10, maxBufferSize: Long = 1024L * 1024L * 50L)(implicit system: ActorSystem) =
+    apply[Cmd, Evt, Context](serverHost, serverPort, RandomRouter(numberOfWorkers), description, workerReconnectTime)(pipelineCtx, stages, ackCount, maxBufferSize)
 
   /** Creates a new SentinelClient
    *
@@ -121,7 +121,7 @@ object SentinelClient {
    *  @return a new sentinel client, connected on the defined host and port
    */
 
-  def roundRobinRouting[Cmd, Evt, Context <: PipelineContext](serverHost: String, serverPort: Int, numberOfWorkers: Int, description: String = "Sentinel Client", workerReconnectTime: FiniteDuration = 2 seconds)(pipelineCtx: ⇒ Context, stages: PipelineStage[Context, Cmd, ByteString, Evt, ByteString], ackCount: Int = 10)(implicit system: ActorSystem) =
-    apply[Cmd, Evt, Context](serverHost, serverPort, RoundRobinRouter(numberOfWorkers), description, workerReconnectTime)(pipelineCtx, stages, ackCount)
+  def roundRobinRouting[Cmd, Evt, Context <: PipelineContext](serverHost: String, serverPort: Int, numberOfWorkers: Int, description: String = "Sentinel Client", workerReconnectTime: FiniteDuration = 2 seconds)(pipelineCtx: ⇒ Context, stages: PipelineStage[Context, Cmd, ByteString, Evt, ByteString], ackCount: Int = 10, maxBufferSize: Long = 1024L * 1024L * 50L)(implicit system: ActorSystem) =
+    apply[Cmd, Evt, Context](serverHost, serverPort, RoundRobinRouter(numberOfWorkers), description, workerReconnectTime)(pipelineCtx, stages, ackCount, maxBufferSize)
 
 }

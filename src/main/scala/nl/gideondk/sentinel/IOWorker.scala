@@ -14,24 +14,26 @@ import akka.util.ByteString
 import scalaz.Scalaz._
 import nl.gideondk.sentinel._
 
+/* Base IO Worker, Blatantly ripped of from Roland Kuhn's example code */
 trait SentinelIOWorker extends Actor with Stash {
-  def ackCount: Int
   def description: String
+  def ackCount: Int
+  def maxBufferSize: Long
 
   val log = Logging(context.system, this)
 
   var tcpWorker: Option[ActorRef] = None
 
-  var storageOffset = 0
-  var storage = Vector.empty[ByteString]
-  var stored = 0L
+  var bufferOffset = 0
+  var buffer = Vector.empty[ByteString]
+  var bufferSize = 0L
 
-  val maxStored = 100000000L
-  val highWatermark = maxStored * 5 / 10
-  val lowWatermark = maxStored * 3 / 10
+  val highWatermark = maxBufferSize * 5 / 10
+  val lowWatermark = maxBufferSize * 3 / 10
+
   var suspended = false
 
-  private def currentOffset = storageOffset + storage.size
+  private def currentOffset = bufferOffset + buffer.size
 
   def baseHandler: Receive
 
@@ -55,7 +57,7 @@ trait SentinelIOWorker extends Actor with Stash {
         context become (baseHandler orElse buffering(ack))
 
       case PeerClosed ⇒
-        if (storage.isEmpty) context stop self
+        if (buffer.isEmpty) context stop self
         else context become closing
     }
   }
@@ -77,7 +79,7 @@ trait SentinelIOWorker extends Actor with Stash {
       case ack: Int if ack < nack ⇒ acknowledge(ack)
       case ack: Int ⇒
         acknowledge(ack)
-        if (storage.nonEmpty) {
+        if (buffer.nonEmpty) {
           if (toAck > 0) {
             // stay in ACK-based mode for a while
             writeFirst()
@@ -85,7 +87,7 @@ trait SentinelIOWorker extends Actor with Stash {
           } else {
             // then return to NACK-based again
             writeAll()
-            context become (if (peerClosed) closing else writing)
+            context become (if (peerClosed) closing else (baseHandler orElse writing))
           }
         } else if (peerClosed) context stop self
         else context become (baseHandler orElse writing)
@@ -96,7 +98,6 @@ trait SentinelIOWorker extends Actor with Stash {
     case CommandFailed(_: Write) ⇒
       tcpWorker.foreach(_ ! ResumeWriting)
       context.become({
-
         case WritingResumed ⇒
           writeAll()
           context.unbecome()
@@ -107,45 +108,44 @@ trait SentinelIOWorker extends Actor with Stash {
 
     case ack: Int ⇒
       acknowledge(ack)
-      if (storage.isEmpty) context stop self
+      if (buffer.isEmpty) context stop self
   }
 
   private def buffer(data: ByteString): Unit = {
-    storage :+= data
-    stored += data.size
+    buffer :+= data
+    bufferSize += data.size
 
-    if (stored > maxStored) {
+    if (bufferSize > maxBufferSize) {
       context stop self
-
-    } else if (stored > highWatermark) {
+    } else if (bufferSize > highWatermark) {
       tcpWorker.foreach(_ ! SuspendReading)
       suspended = true
     }
   }
 
   private def acknowledge(ack: Int): Unit = {
-    require(ack == storageOffset, s"received ack $ack at $storageOffset")
-    require(storage.nonEmpty, s"storage was empty at ack $ack")
+    require(ack == bufferOffset, s"received ack $ack at $bufferOffset")
+    require(buffer.nonEmpty, s"storage was empty at ack $ack")
 
-    val size = storage(0).size
-    stored -= size
+    val size = buffer(0).size
+    bufferSize -= size
 
-    storageOffset += 1
-    storage = storage drop 1
+    bufferOffset += 1
+    buffer = buffer drop 1
 
-    if (suspended && stored < lowWatermark) {
+    if (suspended && bufferSize < lowWatermark) {
       tcpWorker.foreach(_ ! ResumeReading)
       suspended = false
     }
   }
 
   private def writeFirst(): Unit = {
-    tcpWorker.foreach(_ ! Write(storage(0), storageOffset))
+    tcpWorker.foreach(_ ! Write(buffer(0), bufferOffset))
   }
 
   private def writeAll(): Unit = {
-    for ((data, i) ← storage.zipWithIndex) {
-      tcpWorker.foreach(_ ! Write(data, storageOffset + i))
+    for ((data, i) ← buffer.zipWithIndex) {
+      tcpWorker.foreach(_ ! Write(data, bufferOffset + i))
     }
   }
 }
