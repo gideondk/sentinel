@@ -46,7 +46,7 @@ Or by adding the repo:
 to your SBT configuration and adding the `SNAPSHOT` to your library dependencies:
 
 <notextile><pre><code>libraryDependencies ++= Seq(
-  "nl.gideondk" %% "sentinel" % "0.4.0"
+  "nl.gideondk" %% "sentinel" % "0.4.1"
 )
 </code></pre></notextile>
 
