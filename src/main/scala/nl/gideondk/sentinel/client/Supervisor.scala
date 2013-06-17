@@ -9,11 +9,35 @@ import akka.util.ByteString
 import nl.gideondk.sentinel._
 import akka.routing.RandomRouter
 import akka.routing.RoundRobinRouter
+import scala.concurrent.Promise
+import play.api.libs.iteratee.Enumerator
 
-class SentinelClient(address: InetSocketAddress, routerConfig: RouterConfig, description: String,
-                     reconnectDuration: FiniteDuration, worker: ⇒ Actor) extends Actor with ActorLogging {
+trait SentinelClient[Cmd, Evt] {
+  def actor: ActorRef
+
+  def <~<(command: Cmd): Task[Evt] = sendCommand(command)
+
+  def sendCommand(command: Cmd): Task[Evt] = Task {
+    val promise = Promise[Evt]()
+    actor ! Operation(command, promise)
+    promise.future
+  }
+
+  def streamCommands(stream: Enumerator[Cmd]): Task[Evt] = Task {
+    val promise = Promise[Evt]()
+    actor ! StreamedOperation(stream, promise)
+    promise.future
+  }
+}
+
+class SentinelClientSupervisor(address: InetSocketAddress, routerConfig: RouterConfig, description: String,
+                               reconnectDuration: FiniteDuration, worker: ⇒ Actor) extends Actor with ActorLogging {
   import context.dispatcher
-  import SentinelClient._
+
+  private case object InitializeRouter
+  private case object ReconnectRouter
+
+  case class NoConnectionException extends Throwable
 
   var router: Option[ActorRef] = None
 
@@ -60,14 +84,13 @@ class SentinelClient(address: InetSocketAddress, routerConfig: RouterConfig, des
 }
 
 object SentinelClient {
-  private case object InitializeRouter
-  private case object ReconnectRouter
-
   case class NoConnectionException extends Throwable
 
   def apply[Cmd, Evt](serverHost: String, serverPort: Int, routerConfig: RouterConfig,
                       description: String = "Sentinel Client", workerReconnectTime: FiniteDuration = 2 seconds)(stages: ⇒ PipelineStage[PipelineContext, Cmd, ByteString, Evt, ByteString], lowBytes: Long = 1024L * 2L, highBytes: Long = 1024L * 1024L, maxBufferSize: Long = 1024L * 1024L * 50L)(implicit system: ActorSystem) = {
-    system.actorOf(Props(new SentinelClient(new InetSocketAddress(serverHost, serverPort), routerConfig, description, workerReconnectTime, new SentinelClientWorker(stages, description + " Worker")(lowBytes, highBytes, maxBufferSize))))
+    new SentinelClient[Cmd, Evt] {
+      val actor = system.actorOf(Props(new SentinelClientSupervisor(new InetSocketAddress(serverHost, serverPort), routerConfig, description, workerReconnectTime, new SentinelClientWorker(stages, description + " Worker")(lowBytes, highBytes, maxBufferSize))))
+    }
   }
 
   def randomRouting[Cmd, Evt](serverHost: String, serverPort: Int, numberOfWorkers: Int, description: String = "Sentinel Client", workerReconnectTime: FiniteDuration = 2 seconds)(stages: PipelineStage[PipelineContext, Cmd, ByteString, Evt, ByteString], ackCount: Int = 10, maxBufferSize: Long = 1024L * 1024L * 50L)(implicit system: ActorSystem) =

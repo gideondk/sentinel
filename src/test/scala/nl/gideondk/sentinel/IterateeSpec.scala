@@ -10,7 +10,7 @@ import akka.actor.ActorSystem
 import akka.io.{ LengthFieldFrame, PipePair, PipelineContext, PipelineStage }
 import akka.routing.RandomRouter
 import akka.util.{ ByteString, ByteStringBuilder }
-import client.{ SentinelClient, commandable }
+import client._
 import nl.gideondk.sentinel.pipelines.EnumeratorStage
 import play.api.libs.iteratee.{ Enumerator, Iteratee }
 import scalaz.Scalaz._
@@ -87,9 +87,9 @@ class ChunkUploadSpec extends Specification with ChunkUploadWorkers {
       val connNum = 4
 
       val chunks = List.fill(num)(Chunk(false, LargerPayloadTestHelper.randomBSForSize((1024 * 1024 * 0.1).toInt).compact)) ++ List(Chunk(true, ByteString()))
-      val resLength = client.streamCommands[TotalSize, Chunk](Enumerator(chunks: _*)).copoint.length
+      val res = Enumerator(chunks: _*) |~>>> client
 
-      resLength == chunks.foldLeft(0)((t, c) ⇒ t + c.chunk.length)
+      res.copoint.length == chunks.foldLeft(0)((t, c) ⇒ t + c.chunk.length)
     }
   }
 

@@ -11,7 +11,7 @@ import akka.actor.ActorRef
 import akka.io.LengthFieldFrame
 import akka.routing.RandomRouter
 import akka.util.{ ByteString, ByteStringBuilder }
-import client.{ SentinelClient, commandable }
+import client._
 import scalaz.Scalaz._
 import server.SentinelServer
 
@@ -21,7 +21,6 @@ object LargerPayloadServerHandler {
   def handle(event: ByteString): Future[ByteString] = {
     val bs = new ByteStringBuilder
     bs.putInt(event.length)(java.nio.ByteOrder.BIG_ENDIAN)
-
     Future(bs.result)
   }
 }

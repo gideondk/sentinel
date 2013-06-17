@@ -71,8 +71,3 @@ object SentinelServer {
     system.actorOf(Props(new SentinelServer(serverPort, description, stages, requestHandler)(lowBytes, highBytes, maxBufferSize)))
   }
 }
-
-private case object InitializeServerRouter
-private case object ReconnectServerRouter
-
-case class NoWorkerException extends Throwable

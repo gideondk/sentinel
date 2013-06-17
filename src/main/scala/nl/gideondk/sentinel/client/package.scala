@@ -2,25 +2,14 @@ package nl.gideondk.sentinel
 
 import scala.concurrent.Promise
 import play.api.libs.iteratee._
-
 import akka.actor.{ ActorRef, actorRef2Scala }
-
-final class AskableSentinelClient(val clientActorRef: ActorRef) extends AnyVal {
-  def <~<[A](command: A): Task[A] = sendCommand[A, A](command)
-
-  def sendCommand[B, A](command: A): Task[B] = Task {
-    val promise = Promise[B]()
-    clientActorRef ! Operation(command, promise)
-    promise.future
-  }
-
-  def streamCommands[B, A](stream: Enumerator[A]): Task[B] = Task {
-    val promise = Promise[B]()
-    clientActorRef ! StreamedOperation(stream, promise)
-    promise.future
-  }
-}
+import scala.concurrent.Future
+import scala.util.Try
 
 package object client {
-  implicit def commandable(actorRef: ActorRef): AskableSentinelClient = new AskableSentinelClient(actorRef)
+  implicit class SentinelEnumerator[A](val e: Enumerator[A]) extends AnyVal {
+    def |~>>>[B](i: SentinelClient[A, B]): Task[B] = i.streamCommands(e)
+
+    def |>>>[B](i: SentinelClient[A, B]): Future[Try[B]] = i.streamCommands(e).start
+  }
 }

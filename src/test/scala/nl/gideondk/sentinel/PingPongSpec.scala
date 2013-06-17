@@ -12,8 +12,8 @@ import akka.actor.ActorRef
 import akka.io.{ LengthFieldFrame, PipelineContext, SymmetricPipePair, SymmetricPipelineStage }
 import akka.routing.RandomRouter
 import akka.util.ByteString
-import client.{ SentinelClient, commandable }
-import server.SentinelServer
+import server._
+import client._
 
 import akka.actor.ActorSystem
 
