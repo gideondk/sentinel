@@ -13,7 +13,7 @@ import akka.util.ByteString
 import scala.concurrent.Future
 
 class SentinelServer[Cmd, Evt](port: Int, description: String, stages: ⇒ PipelineStage[PipelineContext, Cmd, ByteString, Evt, ByteString],
-                               requestHandler: ⇒ Init[WithinActorContext, Cmd, Evt] ⇒ ActorRef)(lowBytes: Long, highBytes: Long, maxBufferSize: Long) extends Actor with ActorLogging {
+                               requestHandler: Init[WithinActorContext, Cmd, Evt] ⇒ ActorRef)(lowBytes: Long, highBytes: Long, maxBufferSize: Long) extends Actor with ActorLogging {
   import context.dispatcher
 
   val tcp = akka.io.IO(Tcp)(context.system)
@@ -62,9 +62,13 @@ object SentinelServer {
    *  @return a new sentinel server, hosting on the defined port
    */
 
-  def apply[Evt, Cmd](serverPort: Int, handler: Evt ⇒ Future[Cmd], description: String = "Sentinel Server")(stages: ⇒ PipelineStage[PipelineContext, Cmd, ByteString, Evt, ByteString], lowBytes: Long = 1024L * 2L, highBytes: Long = 1024L * 1024L, maxBufferSize: Long = 1024L * 1024L * 50L)(implicit system: ActorSystem) = {
-      def newHandlerActor(init: Init[WithinActorContext, Cmd, Evt]) = system.actorOf(Props(new SentinelServerBasicAsyncHandler(init, handler)).withDispatcher("nl.gideondk.sentinel.sentinel-dispatcher"))
-    system.actorOf(Props(new SentinelServer(serverPort, description, stages, newHandlerActor)(lowBytes, highBytes, maxBufferSize)))
+  def async[Evt, Cmd](serverPort: Int, handler: Evt ⇒ Future[Cmd], description: String = "Sentinel Server")(stages: ⇒ PipelineStage[PipelineContext, Cmd, ByteString, Evt, ByteString], lowBytes: Long = 1024L * 2L, highBytes: Long = 1024L * 1024L, maxBufferSize: Long = 1024L * 1024L * 50L)(implicit system: ActorSystem): ActorRef = {
+    def newHandlerActor(init: Init[WithinActorContext, Cmd, Evt]) = system.actorOf(Props(new SentinelServerBasicAsyncHandler(init, handler)).withDispatcher("nl.gideondk.sentinel.sentinel-dispatcher"))
+    apply[Evt, Cmd](serverPort, handler, description)(stages, newHandlerActor, lowBytes, highBytes, maxBufferSize)(system)
+  }
+
+  def apply[Evt, Cmd](serverPort: Int, handler: Evt ⇒ Future[Cmd], description: String = "Sentinel Server")(stages: ⇒ PipelineStage[PipelineContext, Cmd, ByteString, Evt, ByteString], requestHandler: Init[WithinActorContext, Cmd, Evt] ⇒ ActorRef, lowBytes: Long = 1024L * 2L, highBytes: Long = 1024L * 1024L, maxBufferSize: Long = 1024L * 1024L * 50L)(implicit system: ActorSystem): ActorRef = {
+    system.actorOf(Props(new SentinelServer(serverPort, description, stages, requestHandler)(lowBytes, highBytes, maxBufferSize)))
   }
 }
 

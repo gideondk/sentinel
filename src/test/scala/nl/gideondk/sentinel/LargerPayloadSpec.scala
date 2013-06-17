@@ -28,7 +28,7 @@ object LargerPayloadServerHandler {
 
 trait LargerPayloadWorkers {
   val serverSystem = ActorSystem("server-system")
-  val server = SentinelServer(8002, LargerPayloadServerHandler.handle, "File Server")(stages)(serverSystem)
+  val server = SentinelServer.async(8002, LargerPayloadServerHandler.handle, "File Server")(stages)(serverSystem)
 
   val clientSystem = ActorSystem("client-system")
   val client = SentinelClient("localhost", 8002, RandomRouter(32), "File Client")(stages)(clientSystem)

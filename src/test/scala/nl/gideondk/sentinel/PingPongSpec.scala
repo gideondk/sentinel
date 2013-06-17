@@ -47,7 +47,7 @@ trait PingPongWorkers {
   val stages = new PingPongMessageStage >> new LengthFieldFrame(1000)
 
   val serverSystem = ActorSystem("ping-server-system")
-  val pingServer = SentinelServer(8000, PingPongServerHandler.handle, "Ping Server")(stages)(serverSystem)
+  val pingServer = SentinelServer.async(8000, PingPongServerHandler.handle, "Ping Server")(stages)(serverSystem)
 
   val clientSystem = ActorSystem("ping-client-system")
   val pingClient = SentinelClient("localhost", 8000, RandomRouter(32), "Ping Client")(stages)(clientSystem)

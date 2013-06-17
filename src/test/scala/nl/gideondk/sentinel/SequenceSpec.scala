@@ -54,10 +54,9 @@ trait SequenceWorkers {
   val stages = new SequenceMessageStage >> new LengthFieldFrame(1024 * 1024 * 10)
 
   implicit val actorSystem = ActorSystem("test-system")
-  val server = SentinelServer(8001, SequenceServerHandler.handle, "Ping Server")(stages)
-
+  
+  val server = SentinelServer.async(8001, SequenceServerHandler.handle, "Ping Server")(stages)
   val client = SentinelClient("localhost", 8001, RandomRouter(4), "Ping Client")(stages)
-
 }
 
 class SequenceSpec extends Specification with SequenceWorkers {

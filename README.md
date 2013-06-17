@@ -24,7 +24,8 @@ In overall, treat Sentinel as pre-release alpha software.
 * Supervision (and restart / reconnection functionality) on both server and client for a defined number of workers;
 * Default implementation for flow control;
 * Sequencing and continuing multiple client operations using `Tasks`;
-* Handling of read / write interests.
+* Handling of read / write interests;
+* Streaming Play Enumerator based pipeline.
 
 The following is currently missing in Sentinel, but will be added soon:
 
@@ -46,7 +47,7 @@ Or by adding the repo:
 to your SBT configuration and adding the `SNAPSHOT` to your library dependencies:
 
 <notextile><pre><code>libraryDependencies ++= Seq(
-  "nl.gideondk" %% "sentinel" % "0.4.1"
+  "nl.gideondk" %% "sentinel" % "0.5.0-SNAPSHOT"
 )
 </code></pre></notextile>
 
@@ -59,10 +60,10 @@ Each of these *stages* can easily be composed into a bigger stage (`A => B >> B 
 ```scala
 case class PingPongMessageFormat(s: String)
 
-class PingPongMessageStage extends SymmetricPipelineStage[HasByteOrder,
+class PingPongMessageStage extends SymmetricPipelineStage[PipelineContext,
   PingPongMessageFormat, ByteString] {
   
-    override def apply(ctx: HasByteOrder) = new SymmetricPipePair[PingPongMessageFormat, ByteString] {
+    override def apply(ctx: PipelineContext) = new SymmetricPipePair[PingPongMessageFormat, ByteString] {
         implicit val byteOrder = ctx.byteOrder
         
         override val commandPipeline = { msg: PingPongMessageFormat ⇒
@@ -76,20 +77,11 @@ class PingPongMessageStage extends SymmetricPipelineStage[HasByteOrder,
 }
 ```
 
-It's possible to share a context between each stage of the pipeline, this context must only be used once within one pipeline. Sharing this context between multiple pipelines will result in unpredicted behavior, so it's best to create this context by using a generating function: 
-
-```scala
-def ctx = new HasByteOrder {
-  def byteOrder = java.nio.ByteOrder.BIG_ENDIAN
-}
-```
-
-
 ### Client
 After the definition of the pipeline, a client is easily created:
 
 ```scala
-SentinelClient.randomRouting("localhost", 9999, 4, "Ping Client")(ctx, stages)
+SentinelClient("localhost", 9999, 4, "Ping Client")(stages)
 ```
 
 Defining the host and port where the client should connect to, the amount of workers used to handle commands / events, description of the client and the earlier defined context and stages (for the complete list of parameters, check the code for the moment). 
@@ -113,7 +105,7 @@ The return type of `Cmd` should be wrapped into a `Future`, this makes it able t
 After the definition of the handler, the server can be defined in same fashion as the client: 
 
 ```scala
-SentinelServer(9999, PingPongServerHandler.handle, "Ping Server")(ctx, stages)
+SentinelServer(9999, PingPongServerHandler.handle, "Ping Server")(stages)
 ```
 
 ### Client usage
