@@ -7,12 +7,12 @@ import scala.concurrent.duration.Duration
 import org.specs2.mutable.Specification
 
 import akka.actor.ActorSystem
-import akka.io.{LengthFieldFrame, PipePair, PipelineContext, PipelineStage}
+import akka.io.{ LengthFieldFrame, PipePair, PipelineContext, PipelineStage }
 import akka.routing.RandomRouter
-import akka.util.{ByteString, ByteStringBuilder}
-import client.{SentinelClient, commandable}
+import akka.util.{ ByteString, ByteStringBuilder }
+import client.{ SentinelClient, commandable }
 import nl.gideondk.sentinel.pipelines.EnumeratorStage
-import play.api.libs.iteratee.{Enumerator, Iteratee}
+import play.api.libs.iteratee.{ Enumerator, Iteratee }
 import scalaz.Scalaz._
 import server.SentinelServer
 

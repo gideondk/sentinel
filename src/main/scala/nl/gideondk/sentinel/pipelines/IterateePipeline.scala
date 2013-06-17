@@ -1,10 +1,10 @@
 package nl.gideondk.sentinel.pipelines
 
-import scala.concurrent.{ExecutionContext, Future, Promise}
-import scala.concurrent.duration.{DurationInt, FiniteDuration}
+import scala.concurrent.{ ExecutionContext, Future, Promise }
+import scala.concurrent.duration.{ DurationInt, FiniteDuration }
 
-import akka.actor.{Actor, ActorSystem, Props, Stash, actorRef2Scala}
-import akka.io.{PipePair, PipelineContext, PipelineStage}
+import akka.actor.{ Actor, ActorSystem, Props, Stash, actorRef2Scala }
+import akka.io.{ PipePair, PipelineContext, PipelineStage }
 import akka.pattern.ask
 import akka.util.Timeout
 import play.api.libs.iteratee.Enumerator
@@ -26,10 +26,10 @@ class EnumeratorStage[Cmd <: AnyRef, Evt <: AnyRef](terminator: Evt ⇒ Boolean,
         channels.get(identifier) match {
           case Some(c) ⇒
             def addHookForIdentifier = {
-              val p = Promise[Option[Evt]]()
-              channels = channels ++ Map(identifier -> c.copy(hook = Some(p)))
-              p
-            }
+                val p = Promise[Option[Evt]]()
+                channels = channels ++ Map(identifier -> c.copy(hook = Some(p)))
+                p
+              }
 
             val chunk = {
               if (c.queue.length == 0) addHookForIdentifier

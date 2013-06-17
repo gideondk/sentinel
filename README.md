@@ -25,6 +25,7 @@ In overall, treat Sentinel as pre-release alpha software.
 * Default implementation for flow control;
 * Sequencing and continuing multiple client operations using `Tasks`;
 * Handling of read / write interests;
+* Pluggable response handlers;
 * Streaming Play Enumerator based pipeline.
 
 The following is currently missing in Sentinel, but will be added soon:
@@ -122,6 +123,24 @@ res0: Task[PingPongMessageFormat]
 Use `run` to expose the Future, or use `start(d: Duration)` to perform IO and wait (blocking) on the future.
 
 This bare bone approach to sending / receiving messages is focussed on the idea that a higher-level API on top of Sentinel is responsible to make client usage more comfortable. 
+
+### Streamed requests / responses (not final)
+#### Clients
+It's possible to stream content towards Sentinel clients by sending the `StreamedOperation` command to a Sentinel Client: 
+
+```scala
+client.streamCommands[TotalSize, Chunk](Enumerator(chunks: _*))
+```
+
+The function is annotated with the expected returning type (`TotalSize` in this case) and the type used within the `Enumerator` (`Chunk` in this case). The function takes a **Play 2** Enumerator as argument, which is folded to send each item to the TCP connection.
+
+#### Servers
+To handle incoming streams, a `EnumeratorStage` is available in Sentinel. Initialisation of `EnumeratorStage` takes two arguments: `terminator: Evt ⇒ Boolean` and `includeTerminator: Boolean = false`.
+
+This first argument is a function taking each `Evt` and returning a boolean in case the streamed chunk can be treated as a `EOS`. The second argument is used to declare if the terminator should be included in the eventual stream of content.
+
+A simple example can be found in the [Iteratee Spec](https://github.com/gideondk/sentinel/blob/master/src/test/scala/nl/gideondk/sentinel/IterateeSpec.scala).
+
 
 # License
 Copyright © 2013 Gideon de Kok
