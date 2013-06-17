@@ -15,7 +15,7 @@ In its current state, it's being used internally as a platform to test performan
 
 Since the IO layer (and its API) in Akka 2.2 isn't stable yet, the current codebase of Sentinel can and will change heavily until the release of Akka 2.2.
 
-In overall, treat Sentinel as pre-release alpha software.
+In overall, treat Sentinel as pre-release alpha software (you've been warned ;-).
 
 **Currently available in Sentinel:**
 
@@ -30,7 +30,7 @@ In overall, treat Sentinel as pre-release alpha software.
 
 The following is currently missing in Sentinel, but will be added soon:
 
-* More robust benchmarks for CPU / IO bound services to test router / worker strategies;
+* A far more solid test suite;
 * Better error handling and recovery;
 * Server to client communication;
 * More examples, and overall awesomeness…
@@ -48,7 +48,7 @@ Or by adding the repo:
 to your SBT configuration and adding the `SNAPSHOT` to your library dependencies:
 
 <notextile><pre><code>libraryDependencies ++= Seq(
-  "nl.gideondk" %% "sentinel" % "0.5.0-SNAPSHOT"
+  "nl.gideondk" %% "sentinel" % "0.5.0"
 )
 </code></pre></notextile>
 
@@ -82,7 +82,7 @@ class PingPongMessageStage extends SymmetricPipelineStage[PipelineContext,
 After the definition of the pipeline, a client is easily created:
 
 ```scala
-SentinelClient("localhost", 9999, 4, "Ping Client")(stages)
+SentinelClient.randomRouting("localhost", 9999, 4, "Ping Client")(stages)
 ```
 
 Defining the host and port where the client should connect to, the amount of workers used to handle commands / events, description of the client and the earlier defined context and stages (for the complete list of parameters, check the code for the moment). 
@@ -90,7 +90,10 @@ Defining the host and port where the client should connect to, the amount of wor
 You can use the `randomRouting` / `roundRobinRouting` methods depending on the routing strategy you want to use to communicate to the workers. For a more custom approach the `apply` method is available, which lets you define a router strategy yourself. 
 
 ### Server
-The server follow practically the same route as the client, with one big difference: a handler must be defined to handle the incoming events from a client. The handle function is of type `Evt => Cmd`, taking the parsed result from the incoming pipe and preparing the response send back to the client. 
+Handlers of requests are pluggable by defining a *requestHandler*. The request handler is defined using a function: `Init[WithinActorContext, Cmd, Evt] ⇒ ActorRef`, taking a `TcpPipelineHandler.Init` type and returning a new actor handling the `Init.Event` types from the TcpPipelineHandler and returning the appriopriate `Init.Command` types back to the TcpPipelienHandler
+
+#### Async handler
+By default a *async* handler is supplied with a easy to use interface. The async handler takes a `handle` function as argument, which it uses to handle incoming events from a client. The handle function is of type `Evt => Future[Cmd]`, taking the parsed result from the incoming pipe and preparing the response send back to the client. 
 
 ```scala
 def handle(event: PingPongMessageFormat): Future[PingPongMessageFormat] = {
@@ -101,12 +104,12 @@ def handle(event: PingPongMessageFormat): Future[PingPongMessageFormat] = {
 }
 ```
 
-The return type of `Cmd` should be wrapped into a `Future`, this makes it able to do other non-blocking work within, for instance, IO focused services. Since you probably build your own handler on top of the `handle` function, Sentinel doesn't implement `Response` / `AsyncReponse` and leaves the implemention to the developer.
+The return type of `Cmd` should be wrapped into a `Future`, this makes it able to do other non-blocking work within, for instance, IO focused services. 
 
 After the definition of the handler, the server can be defined in same fashion as the client: 
 
 ```scala
-SentinelServer(9999, PingPongServerHandler.handle, "Ping Server")(stages)
+SentinelServer.async(9999, PingPongServerHandler.handle, "Ping Server")(stages)
 ```
 
 ### Client usage
@@ -124,7 +127,7 @@ Use `run` to expose the Future, or use `start(d: Duration)` to perform IO and wa
 
 This bare bone approach to sending / receiving messages is focussed on the idea that a higher-level API on top of Sentinel is responsible to make client usage more comfortable. 
 
-### Streamed requests / responses (not final)
+### Streamed requests / responses
 #### Clients
 It's possible to stream content towards Sentinel clients by using the the `|~>>>` or `|>>>` functions on a Play *Enumerator* (after importing `nl.sentinel.client._`) 
 
