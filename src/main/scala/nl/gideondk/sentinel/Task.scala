@@ -1,14 +1,14 @@
 package nl.gideondk.sentinel
 
-import scala.concurrent.duration._
-import scala.concurrent._
+import scala.concurrent.Await
 import scala.concurrent.ExecutionContext.Implicits.global
-import scala.util.Try
+import scala.concurrent.Future
+import scala.concurrent.duration.Duration
+import scala.util.{ Failure, Success, Try }
 
 import scalaz._
-import Scalaz._
-import effect._
-import scala.util.{ Success, Failure }
+import scalaz.Scalaz._
+import scalaz.effect.IO
 
 final case class Task[+A](get: IO[Future[Try[A]]]) { self ⇒
   def start: Future[Try[A]] = get.unsafePerformIO

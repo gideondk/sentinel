@@ -1,37 +1,13 @@
 package nl.gideondk.sentinel
 
-import Task._
-import server._
-import client._
+import scala.concurrent.ExecutionContext.Implicits.global
+import scala.concurrent.Future
+import scala.concurrent.duration.{ Duration, SECONDS }
 
 import org.specs2.mutable.Specification
 
-import akka.actor.IO.Chunk
-import akka.actor.IO._
-import akka.actor._
-
-import akka.io._
-
-import java.util.Date
-
-import scalaz._
-import Scalaz._
-import effect._
-
-import concurrent.Await
-import concurrent.duration.Duration
-
-import akka.util.{ ByteStringBuilder, ByteString }
-import akka.routing.RandomRouter
-
-import scala.concurrent.ExecutionContext.Implicits.global
-
-import concurrent._
-import concurrent.duration._
-
-import scala.annotation.tailrec
-import scala.util.{ Try, Success, Failure }
-import java.nio.ByteOrder
+import Task.taskComonadInstance
+import scalaz.Scalaz._
 
 class TaskSpec extends Specification {
   implicit val timeout = Duration(10, SECONDS)
@@ -67,6 +43,5 @@ class TaskSpec extends Specification {
       val tasks = Task.sequenceSuccesses(List(s1, f1, s2))
       tasks.run.get.length == 2
     }
-
   }
 }

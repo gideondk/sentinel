@@ -1,36 +1,30 @@
 package nl.gideondk.sentinel.server
 
-import scala.concurrent.duration._
-import akka.util.ByteString
-import akka.io._
-import akka.io.Tcp._
-import akka.routing._
-import akka.actor._
-import akka.actor.IO.IterateeRef
-import akka.event.Logging
 import java.net.InetSocketAddress
-import scala.reflect.ClassTag
+
+import akka.actor.{ Actor, ActorLogging, ActorRef, ActorSystem, Deploy, Props, actorRef2Scala }
+import akka.io.{ BackpressureBuffer, PipelineContext, PipelineStage, Tcp }
+import akka.io.Tcp.{ Bind, Bound, CommandFailed, Connected }
+import akka.io.TcpPipelineHandler
+import akka.io.TcpPipelineHandler.{ Init, WithinActorContext }
+import akka.io.TcpReadWriteAdapter
+import akka.util.ByteString
+
 import scala.concurrent.Future
 
-class SentinelServer(port: Int, description: String, worker: ⇒ Actor) extends Actor {
+class SentinelServer[Cmd, Evt](port: Int, description: String, stages: ⇒ PipelineStage[PipelineContext, Cmd, ByteString, Evt, ByteString],
+                               requestHandler: ⇒ Init[WithinActorContext, Cmd, Evt] ⇒ ActorRef)(lowBytes: Long, highBytes: Long, maxBufferSize: Long) extends Actor with ActorLogging {
   import context.dispatcher
 
-  val log = Logging(context.system, this)
   val tcp = akka.io.IO(Tcp)(context.system)
 
   val address = new InetSocketAddress(port)
-  val reinitTime: FiniteDuration = 1 second
 
   override def preStart = {
     tcp ! Bind(self, address)
-    self ! InitializeServerRouter
   }
 
   def receive = {
-    case Terminated(actor) ⇒
-      log.debug("Router died, restarting in: " + reinitTime.toString())
-      context.system.scheduler.scheduleOnce(reinitTime, self, ReconnectServerRouter)
-
     case Bound ⇒
       log.debug(description + " bound to " + address)
 
@@ -41,7 +35,15 @@ class SentinelServer(port: Int, description: String, worker: ⇒ Actor) extends 
       }
 
     case req @ Connected(remoteAddr, localAddr) ⇒
-      context.system.actorOf(Props(worker)) forward req
+      val init =
+        TcpPipelineHandler.withLogger(log,
+          stages >>
+            new TcpReadWriteAdapter >>
+            new BackpressureBuffer(lowBytes, highBytes, maxBufferSize))
+
+      val connection = sender
+      val handler = context.actorOf(TcpPipelineHandler.props(init, connection, requestHandler(init)).withDeploy(Deploy.local))
+      connection ! Tcp.Register(handler)
   }
 }
 
@@ -60,8 +62,9 @@ object SentinelServer {
    *  @return a new sentinel server, hosting on the defined port
    */
 
-  def apply[Evt, Cmd, Context <: PipelineContext](serverPort: Int, handler: Evt ⇒ Future[Cmd], description: String = "Sentinel Server")(pipelineCtx: ⇒ Context, stages: PipelineStage[Context, Cmd, ByteString, Evt, ByteString], ackCount: Int = 10, maxBufferSize: Long = 1024L * 1024L * 50L)(implicit system: ActorSystem) = {
-    system.actorOf(Props(new SentinelServer(serverPort, description, new SentinelServerWorker[Cmd, Evt, Context](pipelineCtx, stages, handler, description + " Worker", ackCount, maxBufferSize))))
+  def apply[Evt, Cmd](serverPort: Int, handler: Evt ⇒ Future[Cmd], description: String = "Sentinel Server")(stages: ⇒ PipelineStage[PipelineContext, Cmd, ByteString, Evt, ByteString], lowBytes: Long = 1024L * 2L, highBytes: Long = 1024L * 1024L, maxBufferSize: Long = 1024L * 1024L * 50L)(implicit system: ActorSystem) = {
+      def newHandlerActor(init: Init[WithinActorContext, Cmd, Evt]) = system.actorOf(Props(new SentinelServerBasicAsyncHandler(init, handler)).withDispatcher("nl.gideondk.sentinel.sentinel-dispatcher"))
+    system.actorOf(Props(new SentinelServer(serverPort, description, stages, newHandlerActor)(lowBytes, highBytes, maxBufferSize)))
   }
 }
 

@@ -1,11 +1,8 @@
 package nl.gideondk.sentinel
 
-import akka.actor._
 import scala.concurrent.Promise
-import akka.util.ByteString
-
-import scalaz._
-import Scalaz._
-import effect._
+import play.api.libs.iteratee._
 
 case class Operation[A, B](command: A, promise: Promise[B])
+
+case class StreamedOperation[A, B](stream: Enumerator[A], promise: Promise[B])

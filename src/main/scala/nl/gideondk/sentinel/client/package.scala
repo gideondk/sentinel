@@ -1,13 +1,9 @@
 package nl.gideondk.sentinel
 
-import akka.util.ByteString
-
-import akka.actor.ActorRef
 import scala.concurrent.Promise
-import scalaz._
-import Scalaz._
-import effect._
-import java.net.InetSocketAddress
+import play.api.libs.iteratee._
+
+import akka.actor.{ ActorRef, actorRef2Scala }
 
 final class AskableSentinelClient(val clientActorRef: ActorRef) extends AnyVal {
   def <~<[A](command: A): Task[A] = sendCommand[A, A](command)
@@ -18,6 +14,11 @@ final class AskableSentinelClient(val clientActorRef: ActorRef) extends AnyVal {
     promise.future
   }
 
+  def streamCommands[B, A](stream: Enumerator[A]): Task[B] = Task {
+    val promise = Promise[B]()
+    clientActorRef ! StreamedOperation(stream, promise)
+    promise.future
+  }
 }
 
 package object client {

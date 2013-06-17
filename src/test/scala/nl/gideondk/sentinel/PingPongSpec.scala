@@ -1,45 +1,27 @@
 package nl.gideondk.sentinel
 
-import Task._
-import server._
-import client._
+import scala.concurrent.Await
+import scala.concurrent.ExecutionContext.Implicits.global
+import scala.concurrent.Future
+import scala.concurrent.duration.Duration
+import scala.util.Try
 
 import org.specs2.mutable.Specification
 
-import akka.actor.IO.Chunk
-import akka.actor.IO._
-import akka.actor._
-
-import akka.io._
-
-import java.util.Date
-
-import scalaz._
-import Scalaz._
-import effect._
-
-import concurrent.Await
-import concurrent.duration.Duration
-
-import akka.util.{ ByteStringBuilder, ByteString }
+import akka.actor.ActorRef
+import akka.io.{ LengthFieldFrame, PipelineContext, SymmetricPipePair, SymmetricPipelineStage }
 import akka.routing.RandomRouter
+import akka.util.ByteString
+import client.{ SentinelClient, commandable }
+import server.SentinelServer
 
-import scala.concurrent.ExecutionContext.Implicits.global
-
-import concurrent._
-import concurrent.duration._
-
-import scala.annotation.tailrec
-import scala.util.{ Try, Success, Failure }
-import java.nio.ByteOrder
-
-/* Ping/Pong test for raw performance, Uses no-ack based flow control (since sequence isn't important and chunk sizes are minimal) */
+import akka.actor.ActorSystem
 
 case class PingPongMessageFormat(s: String)
 
-class PingPongMessageStage extends SymmetricPipelineStage[HasByteOrder, PingPongMessageFormat, ByteString] {
-  override def apply(ctx: HasByteOrder) = new SymmetricPipePair[PingPongMessageFormat, ByteString] {
-    implicit val byteOrder = ctx.byteOrder
+class PingPongMessageStage extends SymmetricPipelineStage[PipelineContext, PingPongMessageFormat, ByteString] {
+  override def apply(ctx: PipelineContext) = new SymmetricPipePair[PingPongMessageFormat, ByteString] {
+    implicit val byteOrder = java.nio.ByteOrder.BIG_ENDIAN
 
     override val commandPipeline = { msg: PingPongMessageFormat ⇒
       Seq(Right(ByteString(msg.s)))
@@ -53,57 +35,60 @@ class PingPongMessageStage extends SymmetricPipelineStage[HasByteOrder, PingPong
 
 object PingPongServerHandler {
   def handle(event: PingPongMessageFormat): Future[PingPongMessageFormat] = {
-    event.s match {
-      case "PING" ⇒ Future(PingPongMessageFormat("PONG"))
-      case _      ⇒ Future.failed(new Exception("Unknown command"))
-    }
+    Future(event.s match {
+      case "PING"    ⇒ PingPongMessageFormat("PONG")
+      case x: String ⇒ throw new Exception("Unknown command: " + x)
+      case _         ⇒ throw new Exception("Unknown command")
+    })
   }
 }
 
-object PingPongTestHelper {
-
-  def ctx = new HasByteOrder {
-    def byteOrder = java.nio.ByteOrder.BIG_ENDIAN
-  }
-
+trait PingPongWorkers {
   val stages = new PingPongMessageStage >> new LengthFieldFrame(1000)
 
-  lazy val (pingServer: ActorRef, pingClient: ActorRef) = {
-    val serverSystem = akka.actor.ActorSystem("ping-server-system")
-    val pingServer = SentinelServer(9999, PingPongServerHandler.handle, "Ping Server")(ctx, stages, 5)(serverSystem)
-    Thread.sleep(1000)
+  val serverSystem = ActorSystem("ping-server-system")
+  val pingServer = SentinelServer(8000, PingPongServerHandler.handle, "Ping Server")(stages)(serverSystem)
 
-    val clientSystem = akka.actor.ActorSystem("ping-client-system")
-
-    val pingClient = SentinelClient.randomRouting("localhost", 9999, 32, "Ping Client")(ctx, stages, 5)(clientSystem)
-    (pingServer, pingClient)
-  }
+  val clientSystem = ActorSystem("ping-client-system")
+  val pingClient = SentinelClient("localhost", 8000, RandomRouter(32), "Ping Client")(stages)(clientSystem)
 }
 
-class PingPongSpec extends Specification {
+class PingPongSpec extends Specification with PingPongWorkers {
+  sequential
+
   "A client" should {
     "be able to ping to the server" in {
-      implicit val duration = Duration.apply(10, scala.concurrent.duration.SECONDS)
-      val v = (PingPongTestHelper.pingClient <~< PingPongMessageFormat("PING")).run
+      implicit val duration = Duration(10, scala.concurrent.duration.SECONDS)
+      val v = (pingClient <~< PingPongMessageFormat("PING")).run
 
       v == Try(PingPongMessageFormat("PONG"))
+    }
+
+    "server should disconnect clients on unhandled exceptions" in {
+      implicit val duration = Duration(10, scala.concurrent.duration.SECONDS)
+      val v = (pingClient <~< PingPongMessageFormat("PINGI")).run
+      v.isFailure
     }
 
     "be able to ping to the server in timely fashion" in {
       val num = 200000
 
-      val mulActs = for (i ← 1 to num) yield (PingPongTestHelper.pingClient <~< PingPongMessageFormat("PING"))
+      val mulActs = for (i ← 1 to num) yield (pingClient <~< PingPongMessageFormat("PING"))
       val tasks = Task.sequenceSuccesses(mulActs.toList)
 
       val fut = tasks.start
       BenchmarkHelpers.timed("Ping-Ponging " + num + " requests", num) {
-        Await.result(fut, Duration.apply(10, scala.concurrent.duration.SECONDS))
+        val res = Await.result(fut, Duration(10, scala.concurrent.duration.SECONDS))
         true
       }
 
-      val res = Await.result(fut, Duration.apply(10, scala.concurrent.duration.SECONDS))
+      val res = Await.result(fut, Duration(10, scala.concurrent.duration.SECONDS))
       res.get.filterNot(_ == PingPongMessageFormat("PONG")).length == 0
     }
+  }
 
+  step {
+    clientSystem.shutdown()
+    serverSystem.shutdown()
   }
 }

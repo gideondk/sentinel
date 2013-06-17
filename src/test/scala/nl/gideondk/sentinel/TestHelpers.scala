@@ -1,10 +1,6 @@
 package nl.gideondk.sentinel
 
-import akka.io.PipelineContext
-
-trait HasByteOrder extends PipelineContext {
-  def byteOrder: java.nio.ByteOrder
-}
+import akka.util.ByteString
 
 object BenchmarkHelpers {
   def timed(desc: String, n: Int)(benchmark: ⇒ Unit) = {
@@ -24,5 +20,17 @@ object BenchmarkHelpers {
 
     val totalSize = n * size
     println("* - number of mb/s: " + totalSize / (d / 1000.0) + "\n")
+  }
+}
+
+object LargerPayloadTestHelper {
+  def randomBSForSize(size: Int) = {
+    implicit val be = java.nio.ByteOrder.BIG_ENDIAN
+    val stringB = new StringBuilder(size)
+    val paddingString = "abcdefghijklmnopqrs"
+
+    while (stringB.length() + paddingString.length() < size) stringB.append(paddingString)
+
+    ByteString(stringB.toString().getBytes())
   }
 }

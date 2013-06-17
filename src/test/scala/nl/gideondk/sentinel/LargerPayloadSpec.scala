@@ -1,28 +1,21 @@
 package nl.gideondk.sentinel
 
-import Task._
-import server._
-import client._
-import org.specs2.mutable.Specification
-import akka.actor.IO.Chunk
-import akka.actor.IO._
-import akka.actor._
-import akka.io._
-import java.util.Date
-import scalaz._
-import Scalaz._
-import effect._
-import concurrent.Await
-import concurrent.duration.Duration
-import akka.util.{ ByteStringBuilder, ByteString }
-import akka.routing.RandomRouter
+import scala.concurrent.Await
 import scala.concurrent.ExecutionContext.Implicits.global
-import concurrent._
-import concurrent.duration._
-import scala.annotation.tailrec
-import scala.util.{ Try, Success, Failure }
-import java.nio.ByteOrder
-import scala.util.Random
+import scala.concurrent.Future
+import scala.concurrent.duration.Duration
+
+import org.specs2.mutable.Specification
+
+import akka.actor.ActorRef
+import akka.io.LengthFieldFrame
+import akka.routing.RandomRouter
+import akka.util.{ ByteString, ByteStringBuilder }
+import client.{ SentinelClient, commandable }
+import scalaz.Scalaz._
+import server.SentinelServer
+
+import akka.actor.ActorSystem
 
 object LargerPayloadServerHandler {
   def handle(event: ByteString): Future[ByteString] = {
@@ -33,42 +26,23 @@ object LargerPayloadServerHandler {
   }
 }
 
-object LargerPayloadTestHelper {
+trait LargerPayloadWorkers {
+  val serverSystem = ActorSystem("server-system")
+  val server = SentinelServer(8002, LargerPayloadServerHandler.handle, "File Server")(stages)(serverSystem)
 
-  def ctx = new HasByteOrder {
-    def byteOrder = java.nio.ByteOrder.BIG_ENDIAN
-  }
+  val clientSystem = ActorSystem("client-system")
+  val client = SentinelClient("localhost", 8002, RandomRouter(32), "File Client")(stages)(clientSystem)
 
-  val stages = new LengthFieldFrame(1024 * 1024 * 1024) // 1Gb
-
-  lazy val (server: ActorRef, client: ActorRef) = {
-    val serverSystem = akka.actor.ActorSystem("server-system")
-    val server = SentinelServer(7777, LargerPayloadServerHandler.handle, "File Server")(ctx, stages, 10)(serverSystem)
-    Thread.sleep(1000)
-
-    val clientSystem = akka.actor.ActorSystem("client-system")
-    val client = SentinelClient.randomRouting("localhost", 7777, 32, "File Client")(ctx, stages, 10)(clientSystem)
-    (server, client)
-  }
-
-  def randomBSForSize(size: Int) = {
-    implicit val be = java.nio.ByteOrder.BIG_ENDIAN
-    val stringB = new StringBuilder(size)
-    val paddingString = "abcdefghijklmnopqrs"
-
-    while (stringB.length() + paddingString.length() < size) stringB.append(paddingString)
-
-    ByteString(stringB.toString().getBytes())
-  }
+  def stages = new LengthFieldFrame(1024 * 1024 * 1024) // 1Gb
 
   def sendActionsForBS(bs: ByteString, num: Int) = {
-    val mulActs = for (i ← 1 to num) yield (LargerPayloadTestHelper.client <~< bs)
+    val mulActs = for (i ← 1 to num) yield (client <~< bs)
     val ioActs = mulActs.toList.map(_.get).sequence
     ioActs.map(x ⇒ Future.sequence(x))
   }
 }
 
-class LargerPayloadSpec extends Specification {
+class LargerPayloadSpec extends Specification with LargerPayloadWorkers {
   sequential
   import LargerPayloadTestHelper._
 
@@ -80,7 +54,6 @@ class LargerPayloadSpec extends Specification {
 
       BenchmarkHelpers.throughput("Sending " + num + " requests of " + bs.length / 1024.0 / 1024.0 + " mb", bs.length / 1024.0 / 1024.0, num) {
         Await.result(fut, Duration.apply(20, scala.concurrent.duration.SECONDS))
-        true
       }
       true
     }
@@ -108,7 +81,6 @@ class LargerPayloadSpec extends Specification {
 
       BenchmarkHelpers.throughput("Sending " + num + " requests of " + bs.length / 1024.0 / 1024.0 + " mb", bs.length / 1024.0 / 1024.0, num) {
         Await.result(fut, Duration.apply(20, scala.concurrent.duration.SECONDS))
-        true
       }
       true
     }
@@ -122,7 +94,6 @@ class LargerPayloadSpec extends Specification {
 
       BenchmarkHelpers.throughput("Sending " + num + " requests of " + bs.length / 1024.0 / 1024.0 + " mb", bs.length / 1024.0 / 1024.0, num) {
         Await.result(fut, Duration.apply(20, scala.concurrent.duration.SECONDS))
-        true
       }
       true
     }
@@ -136,9 +107,13 @@ class LargerPayloadSpec extends Specification {
 
       BenchmarkHelpers.throughput("Sending " + num + " requests of " + bs.length / 1024.0 / 1024.0 + " mb", bs.length / 1024.0 / 1024.0, num) {
         Await.result(fut, Duration.apply(20, scala.concurrent.duration.SECONDS))
-        true
       }
       true
     }
+  }
+
+  step {
+    clientSystem.shutdown()
+    serverSystem.shutdown()
   }
 }
