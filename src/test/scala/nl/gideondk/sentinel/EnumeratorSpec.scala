@@ -87,9 +87,13 @@ class ChunkUploadSpec extends Specification with ChunkUploadWorkers {
       val connNum = 4
 
       val chunks = List.fill(num)(Chunk(false, LargerPayloadTestHelper.randomBSForSize((1024 * 1024 * 0.1).toInt).compact)) ++ List(Chunk(true, ByteString()))
-      val res = Enumerator(chunks: _*) |~>>> client
 
-      res.copoint.length == chunks.foldLeft(0)((t, c) ⇒ t + c.chunk.length)
+      val res = for {
+        res1 ← Enumerator(chunks: _*) |~>>> client
+        res2 ← Enumerator(chunks: _*) |~>>> client
+      } yield (res1.length + res2.length)
+
+      res.copoint == (chunks.foldLeft(0)((t, c) ⇒ t + c.chunk.length) * 2)
     }
   }
 

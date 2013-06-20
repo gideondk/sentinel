@@ -8,9 +8,9 @@ object ApplicationBuild extends Build {
   override lazy val settings = super.settings ++
     Seq(
       name := "sentinel",
-      version := "0.5.0",
+      version := "0.5.1",
       organization := "nl.gideondk",
-      scalaVersion := "2.10.0",
+      scalaVersion := "2.10.2",
       parallelExecution in Test := false,
       resolvers ++= Seq(Resolver.mavenLocal,
         "Sonatype OSS Releases" at "http://oss.sonatype.org/content/repositories/releases/",

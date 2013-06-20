@@ -101,7 +101,8 @@ class EnumeratorStage[Cmd <: AnyRef, Evt <: AnyRef](terminator: Evt ⇒ Boolean,
         ctx.singleEvent(enum)
       } else if (terminator(evt)) {
         channelManager ! PushChunk(evt)
-        ctx.singleEvent(newEnum)
+        initial = true
+        ctx.nothing
       } else {
         channelManager ! PushChunk(evt)
         ctx.nothing

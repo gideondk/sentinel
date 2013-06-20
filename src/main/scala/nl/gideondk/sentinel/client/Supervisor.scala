@@ -37,8 +37,6 @@ class SentinelClientSupervisor(address: InetSocketAddress, routerConfig: RouterC
   private case object InitializeRouter
   private case object ReconnectRouter
 
-  case class NoConnectionException extends Throwable
-
   var router: Option[ActorRef] = None
 
   def routerProto = {
@@ -71,21 +69,21 @@ class SentinelClientSupervisor(address: InetSocketAddress, routerConfig: RouterC
     case x: Operation[_, _] ⇒
       router match {
         case Some(r) ⇒ r forward x
-        case None    ⇒ x.promise.failure(NoConnectionException())
+        case None    ⇒ x.promise.failure(NoConnectionException("No connection available for: " + address))
       }
 
     case x: StreamedOperation[_, _] ⇒
       router match {
         case Some(r) ⇒ r forward x
-        case None    ⇒ x.promise.failure(NoConnectionException())
+        case None    ⇒ x.promise.failure(NoConnectionException("No connection available for: " + address))
       }
     case _ ⇒
   }
 }
 
-object SentinelClient {
-  case class NoConnectionException extends Throwable
+case class NoConnectionException(msg: String) extends Throwable(msg)
 
+object SentinelClient {
   def apply[Cmd, Evt](serverHost: String, serverPort: Int, routerConfig: RouterConfig,
                       description: String = "Sentinel Client", workerReconnectTime: FiniteDuration = 2 seconds)(stages: ⇒ PipelineStage[PipelineContext, Cmd, ByteString, Evt, ByteString], lowBytes: Long = 1024L * 2L, highBytes: Long = 1024L * 1024L, maxBufferSize: Long = 1024L * 1024L * 50L)(implicit system: ActorSystem) = {
     new SentinelClient[Cmd, Evt] {
