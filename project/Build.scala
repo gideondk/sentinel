@@ -8,11 +8,13 @@ object ApplicationBuild extends Build {
   override lazy val settings = super.settings ++
     Seq(
       name := "sentinel",
-      version := "0.5.1",
+      version := "0.5.2",
       organization := "nl.gideondk",
       scalaVersion := "2.10.2",
       parallelExecution in Test := false,
       resolvers ++= Seq(Resolver.mavenLocal,
+        "gideondk-repo" at "https://raw.github.com/gideondk/gideondk-mvn-repo/master",
+
         "Sonatype OSS Releases" at "http://oss.sonatype.org/content/repositories/releases/",
         "Sonatype OSS Snapshots" at "http://oss.sonatype.org/content/repositories/snapshots/",
         "Typesafe Snapshots" at "http://repo.typesafe.com/typesafe/snapshots/",
@@ -26,7 +28,7 @@ object ApplicationBuild extends Build {
     "org.scalaz" %% "scalaz-effect" % "7.0.0",
     "org.specs2" %% "specs2" % "1.13",
     
-    "play" %% "play-iteratees" % "2.1.1",
+    "com.typesafe.play" %% "play-iteratees" % "2.2-akka22-SNAPSHOT",
 
     "com.typesafe.akka" % "akka-actor_2.10" % "2.2.0-RC1"
   )
