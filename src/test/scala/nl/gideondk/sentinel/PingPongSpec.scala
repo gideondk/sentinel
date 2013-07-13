@@ -70,20 +70,16 @@ class PingPongSpec extends Specification with PingPongWorkers {
       v.isFailure
     }
 
-    "be able to ping to the server in timely fashion" in {
+    "server and client be able to handle multiple concurrent requests" in {
       val num = 200000
 
       val mulActs = for (i ← 1 to num) yield (pingClient <~< PingPongMessageFormat("PING"))
       val tasks = Task.sequenceSuccesses(mulActs.toList)
 
       val fut = tasks.start
-      BenchmarkHelpers.timed("Ping-Ponging " + num + " requests", num) {
-        val res = Await.result(fut, Duration(10, scala.concurrent.duration.SECONDS))
-        true
-      }
 
       val res = Await.result(fut, Duration(10, scala.concurrent.duration.SECONDS))
-      res.get.filterNot(_ == PingPongMessageFormat("PONG")).length == 0
+      res.get.length == num && res.get.filterNot(_ == PingPongMessageFormat("PONG")).length == 0
     }
   }
 

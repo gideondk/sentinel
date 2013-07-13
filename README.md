@@ -13,9 +13,8 @@ In its current state, it's being used internally as a platform to test performan
 
 ## Status
 
-Since the IO layer (and its API) in Akka 2.2 isn't stable yet, the current codebase of Sentinel can and will change heavily until the release of Akka 2.2.
-
-In overall, treat Sentinel as pre-release alpha software (you've been warned ;-).
+The current codebase of Sentinel can change heavily over releases.
+In overall, treat Sentinel as pre-release alpha software.
 
 **Currently available in Sentinel:**
 
@@ -48,7 +47,7 @@ Or by adding the repo:
 to your SBT configuration and adding the `SNAPSHOT` to your library dependencies:
 
 <notextile><pre><code>libraryDependencies ++= Seq(
-  "nl.gideondk" %% "sentinel" % "0.5.2"
+  "nl.gideondk" %% "sentinel" % "0.5.4"
 )
 </code></pre></notextile>
 

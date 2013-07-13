@@ -51,9 +51,7 @@ class LargerPayloadSpec extends Specification with LargerPayloadWorkers {
       val num = 500
       val fut = sendActionsForBS(bs, num).unsafePerformIO
 
-      BenchmarkHelpers.throughput("Sending " + num + " requests of " + bs.length / 1024.0 / 1024.0 + " mb", bs.length / 1024.0 / 1024.0, num) {
-        Await.result(fut, Duration.apply(20, scala.concurrent.duration.SECONDS))
-      }
+      Await.result(fut, Duration.apply(20, scala.concurrent.duration.SECONDS))
       true
     }
   }
@@ -64,10 +62,7 @@ class LargerPayloadSpec extends Specification with LargerPayloadWorkers {
       val num = 50
       val fut = sendActionsForBS(bs, num).unsafePerformIO
 
-      BenchmarkHelpers.throughput("Sending " + num + " requests of " + bs.length / 1024.0 / 1024.0 + " mb", bs.length / 1024.0 / 1024.0, num) {
-        Await.result(fut, Duration.apply(20, scala.concurrent.duration.SECONDS))
-        true
-      }
+      Await.result(fut, Duration.apply(20, scala.concurrent.duration.SECONDS))
       true
     }
   }
@@ -78,9 +73,7 @@ class LargerPayloadSpec extends Specification with LargerPayloadWorkers {
       val num = 20
       val fut = sendActionsForBS(bs, num).unsafePerformIO
 
-      BenchmarkHelpers.throughput("Sending " + num + " requests of " + bs.length / 1024.0 / 1024.0 + " mb", bs.length / 1024.0 / 1024.0, num) {
-        Await.result(fut, Duration.apply(20, scala.concurrent.duration.SECONDS))
-      }
+      Await.result(fut, Duration.apply(20, scala.concurrent.duration.SECONDS))
       true
     }
   }
@@ -91,9 +84,7 @@ class LargerPayloadSpec extends Specification with LargerPayloadWorkers {
       val num = 5
       val fut = sendActionsForBS(bs, num).unsafePerformIO
 
-      BenchmarkHelpers.throughput("Sending " + num + " requests of " + bs.length / 1024.0 / 1024.0 + " mb", bs.length / 1024.0 / 1024.0, num) {
-        Await.result(fut, Duration.apply(20, scala.concurrent.duration.SECONDS))
-      }
+      Await.result(fut, Duration.apply(20, scala.concurrent.duration.SECONDS))
       true
     }
   }
@@ -104,9 +95,7 @@ class LargerPayloadSpec extends Specification with LargerPayloadWorkers {
       val num = 2
       val fut = sendActionsForBS(bs, num).unsafePerformIO
 
-      BenchmarkHelpers.throughput("Sending " + num + " requests of " + bs.length / 1024.0 / 1024.0 + " mb", bs.length / 1024.0 / 1024.0, num) {
-        Await.result(fut, Duration.apply(20, scala.concurrent.duration.SECONDS))
-      }
+      Await.result(fut, Duration.apply(20, scala.concurrent.duration.SECONDS))
       true
     }
   }
