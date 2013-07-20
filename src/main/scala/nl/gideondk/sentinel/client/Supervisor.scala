@@ -84,6 +84,13 @@ class SentinelClientSupervisor(address: InetSocketAddress, routerConfig: RouterC
 case class NoConnectionException(msg: String) extends Throwable(msg)
 
 object SentinelClient {
+  def waiting[Cmd, Evt](serverHost: String, serverPort: Int, routerConfig: RouterConfig,
+                        description: String = "Sentinel Client", workerReconnectTime: FiniteDuration = 2 seconds)(stages: ⇒ PipelineStage[PipelineContext, Cmd, ByteString, Evt, ByteString], lowBytes: Long = 1024L * 2L, highBytes: Long = 1024L * 1024L, maxBufferSize: Long = 1024L * 1024L * 50L)(implicit system: ActorSystem) = {
+    new SentinelClient[Cmd, Evt] {
+      val actor = system.actorOf(Props(new SentinelClientSupervisor(new InetSocketAddress(serverHost, serverPort), routerConfig, description, workerReconnectTime, new WaitingSentinelClientWorker(stages, description + " Worker")(lowBytes, highBytes, maxBufferSize))))
+    }
+  }
+
   def apply[Cmd, Evt](serverHost: String, serverPort: Int, routerConfig: RouterConfig,
                       description: String = "Sentinel Client", workerReconnectTime: FiniteDuration = 2 seconds)(stages: ⇒ PipelineStage[PipelineContext, Cmd, ByteString, Evt, ByteString], lowBytes: Long = 1024L * 2L, highBytes: Long = 1024L * 1024L, maxBufferSize: Long = 1024L * 1024L * 50L)(implicit system: ActorSystem) = {
     new SentinelClient[Cmd, Evt] {

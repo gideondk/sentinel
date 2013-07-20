@@ -82,6 +82,48 @@ class SentinelClientWorker[Cmd, Evt](stages: ⇒ PipelineStage[PipelineContext, 
   }
 }
 
+class WaitingSentinelClientWorker[Cmd, Evt](stages: ⇒ PipelineStage[PipelineContext, Cmd, ByteString, Evt, ByteString],
+                                            workerDescription: String = "Sentinel Client Worker")(lowBytes: Long, highBytes: Long, maxBufferSize: Long) extends SentinelClientWorker(stages, workerDescription)(lowBytes, highBytes, maxBufferSize) {
+
+  import context.dispatcher
+
+  var requestRunning = false
+  val requests = Queue[SentinelCommand]()
+
+  override def handleResponses(init: Init[WithinActorContext, Cmd, Evt], connection: ActorRef): Receive = {
+    case init.Event(data) ⇒
+      val pr = promises.dequeue
+      pr.success(data)
+      requestRunning = false
+      if (requests.length > 0) connected(init, connection)(requests.dequeue)
+
+    case Terminated(`connection`) ⇒
+      promises.foreach(_.failure(new Exception("TCP Actor disconnected")))
+      context.stop(self)
+  }
+
+  override def connected(init: Init[WithinActorContext, Cmd, Evt], connection: ActorRef): Receive = handleResponses(init, connection) orElse {
+    case o: Operation[Cmd, Evt] ⇒
+      requestRunning match {
+        case false ⇒
+          super.connected(init, connection)(o)
+          requestRunning = true
+        case true ⇒ requests.enqueue(o)
+      }
+
+    case o: StreamedOperation[Cmd, Evt] ⇒
+      requestRunning match {
+        case false ⇒
+          super.connected(init, connection)(o)
+          requestRunning = true
+        case true ⇒ requests.enqueue(o)
+      }
+
+    case BackpressureBuffer.HighWatermarkReached ⇒
+      context.become(highWaterMark(init, connection))
+  }
+}
+
 private[sentinel] object SentinelClientWorker {
   /* Worker commands */
   case class ConnectToHost(address: InetSocketAddress)
