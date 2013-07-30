@@ -7,8 +7,8 @@ import akka.io.{ PipelineContext, PipelineStage }
 import akka.routing.{ Broadcast, RouterConfig }
 import akka.util.ByteString
 import nl.gideondk.sentinel._
-import akka.routing.RandomRouter
-import akka.routing.RoundRobinRouter
+
+import akka.routing._
 import scala.concurrent.Promise
 import play.api.libs.iteratee.Enumerator
 
@@ -45,7 +45,6 @@ class SentinelClientSupervisor(address: InetSocketAddress, routerConfig: RouterC
 
   def initialize {
     router = Some(routerProto)
-    router.get ! Broadcast(SentinelClientWorker.ConnectToHost(address))
     context.watch(router.get)
   }
 
@@ -84,17 +83,17 @@ class SentinelClientSupervisor(address: InetSocketAddress, routerConfig: RouterC
 case class NoConnectionException(msg: String) extends Throwable(msg)
 
 object SentinelClient {
-  def waiting[Cmd, Evt](serverHost: String, serverPort: Int, routerConfig: RouterConfig,
-                        description: String = "Sentinel Client", workerReconnectTime: FiniteDuration = 2 seconds)(stages: ⇒ PipelineStage[PipelineContext, Cmd, ByteString, Evt, ByteString], lowBytes: Long = 1024L * 2L, highBytes: Long = 1024L * 1024L, maxBufferSize: Long = 1024L * 1024L * 50L)(implicit system: ActorSystem) = {
-    new SentinelClient[Cmd, Evt] {
-      val actor = system.actorOf(Props(new SentinelClientSupervisor(new InetSocketAddress(serverHost, serverPort), routerConfig, description, workerReconnectTime, new WaitingSentinelClientWorker(stages, description + " Worker")(lowBytes, highBytes, maxBufferSize))))
-    }
-  }
-
   def apply[Cmd, Evt](serverHost: String, serverPort: Int, routerConfig: RouterConfig,
                       description: String = "Sentinel Client", workerReconnectTime: FiniteDuration = 2 seconds)(stages: ⇒ PipelineStage[PipelineContext, Cmd, ByteString, Evt, ByteString], lowBytes: Long = 1024L * 2L, highBytes: Long = 1024L * 1024L, maxBufferSize: Long = 1024L * 1024L * 50L)(implicit system: ActorSystem) = {
     new SentinelClient[Cmd, Evt] {
-      val actor = system.actorOf(Props(new SentinelClientSupervisor(new InetSocketAddress(serverHost, serverPort), routerConfig, description, workerReconnectTime, new SentinelClientWorker(stages, description + " Worker")(lowBytes, highBytes, maxBufferSize))))
+      val actor = system.actorOf(Props(new SentinelClientSupervisor(new InetSocketAddress(serverHost, serverPort), routerConfig, description, workerReconnectTime, new SentinelClientWorker(new InetSocketAddress(serverHost, serverPort), stages, description + " Worker")(lowBytes, highBytes, maxBufferSize))))
+    }
+  }
+
+  def waiting[Cmd, Evt](serverHost: String, serverPort: Int, routerConfig: RouterConfig,
+                        description: String = "Sentinel Client", workerReconnectTime: FiniteDuration = 2 seconds)(stages: ⇒ PipelineStage[PipelineContext, Cmd, ByteString, Evt, ByteString], lowBytes: Long = 1024L * 2L, highBytes: Long = 1024L * 1024L, maxBufferSize: Long = 1024L * 1024L * 50L)(implicit system: ActorSystem) = {
+    new SentinelClient[Cmd, Evt] {
+      val actor = system.actorOf(Props(new SentinelClientSupervisor(new InetSocketAddress(serverHost, serverPort), routerConfig, description, workerReconnectTime, new WaitingSentinelClientWorker(new InetSocketAddress(serverHost, serverPort), stages, description + " Worker")(lowBytes, highBytes, maxBufferSize))))
     }
   }
 
@@ -103,4 +102,9 @@ object SentinelClient {
 
   def roundRobinRouting[Cmd, Evt](serverHost: String, serverPort: Int, numberOfWorkers: Int, description: String = "Sentinel Client", workerReconnectTime: FiniteDuration = 2 seconds)(stages: PipelineStage[PipelineContext, Cmd, ByteString, Evt, ByteString], ackCount: Int = 10, maxBufferSize: Long = 1024L * 1024L * 50L)(implicit system: ActorSystem) =
     apply[Cmd, Evt](serverHost, serverPort, RoundRobinRouter(numberOfWorkers), description, workerReconnectTime)(stages, ackCount, maxBufferSize)
+
+  def dynamic[Cmd, Evt](serverHost: String, serverPort: Int, lowerBound: Int = 2, upperBound: Int = 16, description: String = "Sentinel Client", workerReconnectTime: FiniteDuration = 2 seconds)(stages: PipelineStage[PipelineContext, Cmd, ByteString, Evt, ByteString], ackCount: Int = 10, maxBufferSize: Long = 1024L * 1024L * 50L)(implicit system: ActorSystem) = {
+    val resizer = DefaultResizer(lowerBound, upperBound)
+    apply[Cmd, Evt](serverHost, serverPort, RoundRobinRouter(resizer = Some(resizer)), description, workerReconnectTime)(stages, ackCount, maxBufferSize)
+  }
 }
