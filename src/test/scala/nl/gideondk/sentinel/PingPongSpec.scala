@@ -50,7 +50,7 @@ trait PingPongWorkers {
   val pingServer = SentinelServer.async(8000, PingPongServerHandler.handle, "Ping Server")(stages)(serverSystem)
 
   val clientSystem = ActorSystem("ping-client-system")
-  val pingClient = SentinelClient("localhost", 8000, RandomRouter(32), "Ping Client")(stages)(clientSystem)
+  val pingClient = SentinelClient.dynamic("localhost", 8000, 8, 32, "Ping Client")(stages)(clientSystem)
 }
 
 class PingPongSpec extends Specification with PingPongWorkers {
@@ -71,7 +71,7 @@ class PingPongSpec extends Specification with PingPongWorkers {
     }
 
     "server and client be able to handle multiple concurrent requests" in {
-      val num = 200000
+      val num = 20000
 
       val mulActs = for (i ← 1 to num) yield (pingClient <~< PingPongMessageFormat("PING"))
       val tasks = Task.sequenceSuccesses(mulActs.toList)

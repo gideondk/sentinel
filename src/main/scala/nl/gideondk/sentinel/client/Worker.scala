@@ -15,9 +15,10 @@ import nl.gideondk.sentinel._
 
 import play.api.libs.iteratee._
 
+import akka.pattern.pipe
 import scala.concurrent.Promise
 
-class SentinelClientWorker[Cmd, Evt](stages: ⇒ PipelineStage[PipelineContext, Cmd, ByteString, Evt, ByteString],
+class SentinelClientWorker[Cmd, Evt](address: InetSocketAddress, stages: ⇒ PipelineStage[PipelineContext, Cmd, ByteString, Evt, ByteString],
                                      workerDescription: String = "Sentinel Client Worker")(lowBytes: Long, highBytes: Long, maxBufferSize: Long) extends Actor with ActorLogging with Stash {
   import context.dispatcher
   import SentinelClientWorker._
@@ -27,10 +28,11 @@ class SentinelClientWorker[Cmd, Evt](stages: ⇒ PipelineStage[PipelineContext, 
   /* Current open requests */
   val promises = Queue[Promise[Evt]]()
 
-  def receive = {
-    case h: ConnectToHost ⇒
-      tcp ! Tcp.Connect(h.address)
+  override def preStart = {
+    tcp ! Tcp.Connect(address)
+  }
 
+  def receive = {
     case Connected(remoteAddr, localAddr) ⇒
       val init =
         TcpPipelineHandler.withLogger(log,
@@ -68,22 +70,58 @@ class SentinelClientWorker[Cmd, Evt](stages: ⇒ PipelineStage[PipelineContext, 
 
     case o: StreamedOperation[Cmd, Evt] ⇒
       promises.enqueue(o.promise)
-      o.stream |>>> Iteratee.foreach(x ⇒ connection ! init.Command(x))
+      context.become(handleOutgoingStream(init, connection, o.stream), discardOld = false)
 
     case BackpressureBuffer.HighWatermarkReached ⇒
-      context.become(highWaterMark(init, connection))
+      context.become(handleResponses(init, connection) orElse {
+        case BackpressureBuffer.LowWatermarkReached ⇒
+          unstashAll()
+          context.unbecome()
+        case _: SentinelCommand ⇒ stash()
+      }, discardOld = false)
   }
 
-  def highWaterMark(init: Init[WithinActorContext, Cmd, Evt], connection: ActorRef): Receive = handleResponses(init, connection) orElse {
-    case BackpressureBuffer.LowWatermarkReached ⇒
-      unstashAll()
-      context.become(connected(init, connection))
-    case _: Operation[Cmd, Evt] ⇒ stash()
+  def handleOutgoingStream(init: Init[WithinActorContext, Cmd, Evt], connection: ActorRef, stream: Enumerator[Cmd]): Receive = {
+    case class StreamFinished()
+    case class StreamChunk(c: Cmd)
+
+      def iteratee: Iteratee[Cmd, Unit] = {
+          def step(i: Input[Cmd]): Iteratee[Cmd, Unit] = i match {
+            case Input.EOF ⇒
+              Done(Unit, Input.EOF)
+            case Input.Empty ⇒ Cont[Cmd, Unit](i ⇒ step(i))
+            case Input.El(e) ⇒
+              self ! StreamChunk(e)
+              Cont[Cmd, Unit](i ⇒ step(i))
+          }
+        (Cont[Cmd, Unit](i ⇒ step(i)))
+      }
+
+    (stream |>>> iteratee).map(x ⇒ StreamFinished()).pipeTo(self)
+
+    handleResponses(init, connection) orElse {
+      case StreamChunk(x) ⇒
+        connection ! init.Command(x)
+      case x: StreamFinished ⇒
+        unstashAll()
+        context.unbecome()
+      case scala.util.Failure(e: Throwable) ⇒
+        log.error(e.getMessage)
+        context.stop(self)
+      case BackpressureBuffer.HighWatermarkReached ⇒
+        context.become(handleResponses(init, connection) orElse {
+          case BackpressureBuffer.LowWatermarkReached ⇒
+            unstashAll()
+            context.unbecome()
+          case _: SentinelCommand | _: StreamChunk ⇒ stash()
+        }, discardOld = false)
+      case _: SentinelCommand ⇒ stash()
+    }
   }
 }
 
-class WaitingSentinelClientWorker[Cmd, Evt](stages: ⇒ PipelineStage[PipelineContext, Cmd, ByteString, Evt, ByteString],
-                                            workerDescription: String = "Sentinel Client Worker")(lowBytes: Long, highBytes: Long, maxBufferSize: Long) extends SentinelClientWorker(stages, workerDescription)(lowBytes, highBytes, maxBufferSize) {
+class WaitingSentinelClientWorker[Cmd, Evt](address: InetSocketAddress, stages: ⇒ PipelineStage[PipelineContext, Cmd, ByteString, Evt, ByteString],
+                                            workerDescription: String = "Sentinel Client Worker")(lowBytes: Long, highBytes: Long, maxBufferSize: Long) extends SentinelClientWorker(address, stages, workerDescription)(lowBytes, highBytes, maxBufferSize) {
 
   import context.dispatcher
 
@@ -120,7 +158,7 @@ class WaitingSentinelClientWorker[Cmd, Evt](stages: ⇒ PipelineStage[PipelineCo
       }
 
     case BackpressureBuffer.HighWatermarkReached ⇒
-      context.become(highWaterMark(init, connection))
+      super.connected(init, connection)(BackpressureBuffer.HighWatermarkReached)
   }
 }
 
