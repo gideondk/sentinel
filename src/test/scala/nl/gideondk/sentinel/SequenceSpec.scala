@@ -57,7 +57,7 @@ trait SequenceWorkers {
   implicit val actorSystem = ActorSystem("test-system")
 
   val server = SentinelServer.async(8001, SequenceServerHandler.handle, "Ping Server")(stages)
-  val client = SentinelClient("localhost", 8001, RandomRouter(4), "Ping Client")(stages)
+  val client = SentinelClient.waiting("localhost", 8001, RandomRouter(4), "Ping Client")(stages)
 }
 
 class SequenceSpec extends Specification with SequenceWorkers {
