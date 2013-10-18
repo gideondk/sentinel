@@ -24,13 +24,20 @@ object ApplicationBuild extends Build {
     )
 
   val appDependencies = Seq(
-    "org.scalaz" %% "scalaz-core" % "7.0.0",
-    "org.scalaz" %% "scalaz-effect" % "7.0.0",
-    "org.specs2" %% "specs2" % "1.13",
+    "org.scalaz" %% "scalaz-core" % "7.0.3",
+    "org.scalaz" %% "scalaz-effect" % "7.0.3",
+    "org.scalaz.stream" %% "scalaz-stream" % "0.2-SNAPSHOT",
+
+    "org.scalatest" % "scalatest_2.10" % "1.9.1" % "test",
     
     "com.typesafe.play" %% "play-iteratees" % "2.2-akka22-SNAPSHOT",
 
-    "com.typesafe.akka" % "akka-actor_2.10" % "2.2.0"
+    "com.typesafe.akka" %% "akka-actor" % "2.2.0",
+    "com.typesafe.akka" %% "akka-testkit" % "2.2.0",
+
+    "org.typelevel" %% "scalaz-contrib-210"        % "0.1.5",
+
+    "com.chuusai" % "shapeless" % "2.0.0-M1" cross CrossVersion.full
   )
 
   lazy val root = Project(id = "sentinel",

@@ -1,241 +1,273 @@
-package nl.gideondk.sentinel.client
+// package nl.gideondk.sentinel.client
 
-import java.net.InetSocketAddress
+// import java.net.InetSocketAddress
+// import akka.actor._
+// import akka.io._
+// import akka.io.Tcp._
+// import akka.io.TcpPipelineHandler._
+// import akka.util.ByteString
+// import nl.gideondk.sentinel._
+// import play.api.libs.iteratee._
+// import scala.concurrent.Promise
+// import scala.util.{ Success, Failure }
+// import scala.collection.immutable.Queue
+// import scalaz.stream._
 
-import scala.collection.mutable.Queue
+// import Process._
+// import process1._
+// import akka.pattern._
+// import scalaz._
+// import Scalaz._
 
-import akka.actor._
-import akka.io.{ BackpressureBuffer, PipelineContext, PipelineStage, Tcp }
-import akka.io.Tcp.{ Command, CommandFailed, Connected, Register }
-import akka.io.TcpPipelineHandler
-import akka.io.TcpPipelineHandler.{ Init, WithinActorContext }
-import akka.io.TcpReadWriteAdapter
-import akka.util.ByteString
-import nl.gideondk.sentinel._
+// import akka.util.Timeout
+// import scala.concurrent.duration._
 
-import play.api.libs.iteratee._
+// object SentinelClientWorker {
+//   case class ConnectToHost(address: InetSocketAddress)
+//   case object TcpActorDisconnected
+//   case object UpstreamFinished
 
-import akka.pattern.pipe
-import scala.concurrent.Promise
+//   case class NoConnectionAvailable(reason: String) extends Throwable(reason)
 
-import scala.util.{ Success, Failure }
+//   class OperationHandler[Cmd, Evt](init: Init[WithinActorContext, Cmd, Evt], connection: ActorRef) extends Actor with ActorLogging {
+//     context watch connection
 
-object SentinelClientWorker {
-  case class ConnectToHost(address: InetSocketAddress)
-  case object TcpActorDisconnected
-  case object UpstreamFinished
-}
+//     var behavior: Receive = {
+//       case init.Event(data) ⇒
+//         val pr = promises.head
+//         promises = promises.tail
+//         pr.success(data)
 
-class SentinelClientWorker[Cmd, Evt](address: InetSocketAddress, stages: ⇒ PipelineStage[PipelineContext, Cmd, ByteString, Evt, ByteString],
-                                     workerDescription: String = "Sentinel Client Worker")(lowBytes: Long, highBytes: Long, maxBufferSize: Long) extends Actor with ActorLogging with Stash {
-  import context.dispatcher
-  import SentinelClientWorker._
+//       case o: Operation[Cmd, Evt] ⇒
+//         promises :+= o.promise
+//         connection ! init.Command(o.command)
+//     }
 
-  val tcp = akka.io.IO(Tcp)(context.system)
-  val receiverQueue = Queue[ActorRef]()
+//     var promises = Queue[Promise[Evt]]()
 
-  override def preStart = tcp ! Tcp.Connect(address)
+//     override def postStop() = {
+//       promises.foreach(_.failure(new Exception("Actor quit unexpectedly")))
+//     }
 
-  def disconnected: Receive = {
-    case Connected(remoteAddr, localAddr) ⇒
-      val init = TcpPipelineHandler.withLogger(log,
-        stages >>
-          new TcpReadWriteAdapter >>
-          new BackpressureBuffer(lowBytes, highBytes, maxBufferSize))
+//     def receive = behavior
+//   }
 
-      val handler = context.actorOf(TcpPipelineHandler.props(init, sender, self).withDeploy(Deploy.local).withDeploy(Deploy.local))
-      context watch handler
+//   class UpStreamHandler[Cmd, Evt](init: Init[WithinActorContext, Cmd, Evt], connection: ActorRef) extends Actor with ActorLogging with Stash {
+//     import context.dispatcher
 
-      sender ! Register(handler)
-      unstashAll()
-      context.become(connected(init, handler))
+//     context watch connection
 
-    case CommandFailed(cmd: Command) ⇒
-      context.stop(self) // Bit harsh at the moment, but should trigger reconnect and probably do better next time...
+//     var promises = Queue[Promise[Evt]]()
 
-    case _ ⇒ stash()
-  }
+//     override def postStop = {
+//       promises.foreach(_.failure(new Exception("Actor quit unexpectedly")))
+//     }
 
-  def connected(init: Init[WithinActorContext, Cmd, Evt], connection: ActorRef): Receive = {
-    val operationHandler = context.actorOf(Props(new OperationHandler(init, connection)))
-    val upstreamHandler = context.actorOf(Props(new UpstreamHandler(init, connection)).withDispatcher("nl.gideondk.sentinel.sentinel-dispatcher"))
+//     def handleResponses: Receive = {
+//       case init.Event(data) ⇒
+//         val pr = promises.head
+//         promises = promises.tail
+//         pr.success(data)
+//     }
 
-    context watch operationHandler
-    context watch upstreamHandler
+//     def receive: Receive = handleResponses orElse {
+//       case o: UpStreamOperation[Cmd, Evt] ⇒
+//         promises :+= o.promise
+//         context.become(handleOutgoingStream(o.source), discardOld = false)
+//     }
 
-      def handleResponses: Receive = {
-        case x: init.Event ⇒
-          receiverQueue.dequeue.forward(x)
-      }
+//     def handleOutgoingStream(stream: Process[Task, Cmd]): Receive = {
+//       case object StreamFinished
+//       case object StreamFinishedIsOk
+//       case object StreamReady
 
-      def handleHighWaterMark: Receive = {
-        case BackpressureBuffer.HighWatermarkReached ⇒
-          upstreamHandler ! BackpressureBuffer.HighWatermarkReached
-          context.become(handleResponses orElse {
-            case BackpressureBuffer.LowWatermarkReached ⇒
-              upstreamHandler ! BackpressureBuffer.LowWatermarkReached
-              unstashAll()
-              context.unbecome()
-            case _: SentinelCommand ⇒ stash()
-          }, discardOld = false)
-      }
+//       case object InitializeStream
 
-      /* Upstream handler, stashes new requests until up stream is finished */
-      def handleUpstream: Receive = handleResponses orElse handleHighWaterMark orElse {
-        case UpstreamFinished ⇒
-          unstashAll()
-          context.unbecome()
-        case _ ⇒ stash()
-      }
+//       case class StreamChunk(c: Cmd)
+//       case object StreamChunkSent
 
-      def default: Receive = handleResponses orElse handleHighWaterMark orElse {
-        case o: Operation[Cmd, Evt] ⇒
-          receiverQueue enqueue operationHandler
-          operationHandler forward o
+//       implicit val timeout = Timeout(2 seconds)
+//       val sink = Task.actorResource(self)((x: ActorRef) ⇒ Task(x ? InitializeStream))((x: ActorRef) ⇒ Task(x ? StreamFinished))((x: ActorRef) ⇒ ((c: Cmd) ⇒ Task(x ? StreamChunk(c)).map(x ⇒ ())).point[Task])
+//       val a = (stream to sink)
+//       val x = a.run
+//       x.start
 
-        case so: StreamedOperation[Cmd, Evt] ⇒
-          context.become(handleUpstream, discardOld = false)
-          receiverQueue enqueue upstreamHandler
-          upstreamHandler forward so
+//       //      val sink = io.resource(self.point[STask])((x: ActorRef) => (x ! StreamFinished).point[STask])((x: ActorRef) => ((c: Cmd) => (x ! StreamChunk(c)).point[STask]).point[STask])
+//       //      val a = stream to sink
+//       //      a.run
 
-        case Terminated(`connection`) ⇒
-          log.error(workerDescription + " has been terminated due to a terminated TCP worker")
-          context.stop(self)
+//       handleResponses orElse {
+//         case InitializeStream ⇒
+//           sender ! StreamReady
 
-        case x: Terminated ⇒
-          log.error(workerDescription + " has been terminated due to a internal error")
-          context.stop(self)
-      }
+//         case StreamChunk(x) ⇒
+//           connection ! init.Command(x)
+//           sender ! StreamChunkSent
 
-    default
-  }
+//         case StreamFinished ⇒
+//           context.parent ! UpstreamFinished
+//           unstashAll()
+//           context.unbecome()
+//           sender ! StreamFinishedIsOk
 
-  def receive = disconnected
-}
+//         case scala.util.Failure(e: Throwable) ⇒
+//           log.error(e.getMessage)
+//           context.stop(self)
 
-private class OperationHandler[Cmd, Evt](init: Init[WithinActorContext, Cmd, Evt], connection: ActorRef) extends Actor with ActorLogging {
-  import SentinelClientWorker._
+//         case BackpressureBuffer.HighWatermarkReached ⇒
+//           context.become(handleResponses orElse {
+//             case BackpressureBuffer.LowWatermarkReached ⇒
+//               unstashAll()
+//               context.unbecome()
+//             case _: SentinelCommand[_] | _: StreamChunk | StreamFinished ⇒ stash()
+//           }, discardOld = false)
+//         case _: SentinelCommand[_] ⇒ stash()
+//       }
+//     }
+//   }
+// }
 
-  context watch connection
+// class SentinelClientWorker[Cmd, Evt](address: InetSocketAddress, stages: ⇒ PipelineStage[PipelineContext, Cmd, ByteString, Evt, ByteString],
+//                                      workerDescription: String = "Sentinel Client Worker")(lowBytes: Long, highBytes: Long, maxBufferSize: Long) extends Actor with ActorLogging with Stash {
+//   import SentinelClientWorker._
 
-  val promises = Queue[Promise[Evt]]()
+//   val tcp = akka.io.IO(Tcp)(context.system)
+//   var receiverQueue = Queue.empty[ActorRef]
 
-  override def postStop = {
-    promises.foreach(_.failure(new Exception("Actor quit unexpectedly")))
-  }
+//   override def preStart = tcp ! Tcp.Connect(address)
 
-  def receive: Receive = {
-    case init.Event(data) ⇒
-      val pr = promises.dequeue
-      pr.success(data)
+//   def disconnected: Receive = {
+//     case Connected(remoteAddr, localAddr) ⇒
+//       val init = TcpPipelineHandler.withLogger(log,
+//         stages >>
+//           new TcpReadWriteAdapter)
 
-    case o: Operation[Cmd, Evt] ⇒
-      promises.enqueue(o.promise)
-      connection ! init.Command(o.command)
-  }
-}
+//       val handler = context.actorOf(TcpPipelineHandler.props(init, sender, self).withDeploy(Deploy.local))
+//       context watch handler
 
-private class UpstreamHandler[Cmd, Evt](init: Init[WithinActorContext, Cmd, Evt], connection: ActorRef) extends Actor with ActorLogging with Stash {
-  import SentinelClientWorker._
-  import context.dispatcher
+//       sender ! Register(handler)
+//       unstashAll()
+//       context.become(connected(init, handler))
 
-  context watch connection
+//     case CommandFailed(cmd: Command) ⇒
+//       context.stop(self) // Bit harsh at the moment, but should trigger reconnect and probably do better next time...
 
-  val promises = Queue[Promise[Evt]]()
+//     case x: SentinelCommand[_] ⇒
+//       x.promise.failure(NoConnectionAvailable("Client has not yet been connected to a endpoint"))
 
-  override def postStop = {
-    promises.foreach(_.failure(new Exception("Actor quit unexpectedly")))
-  }
+//     case _ ⇒ stash()
+//   }
 
-  def handleResponses: Receive = {
-    case init.Event(data) ⇒
-      val pr = promises.dequeue
-      pr.success(data)
-  }
+//   def connected(init: Init[WithinActorContext, Cmd, Evt], connection: ActorRef): Receive = {
+//     val operationHandler = context.actorOf(Props(new OperationHandler(init, connection)))
+//     val upstreamHandler = context.actorOf(Props(new UpStreamHandler(init, connection)).withDispatcher("nl.gideondk.sentinel.sentinel-dispatcher"))
 
-  def receive: Receive = handleResponses orElse {
-    case o: StreamedOperation[Cmd, Evt] ⇒
-      promises.enqueue(o.promise)
-      context.become(handleOutgoingStream(o.stream), discardOld = false)
-  }
+//     var behavior: Receive = { case _ ⇒ () }
+//     var previousBehavior: Receive = { case _ ⇒ () }
 
-  def handleOutgoingStream(stream: Enumerator[Cmd]): Receive = {
-    case object StreamFinished
-    case class StreamChunk(c: Cmd)
+//     context watch operationHandler
+//     context watch upstreamHandler
 
-      def iteratee: Iteratee[Cmd, Unit] = {
-          def step(i: Input[Cmd]): Iteratee[Cmd, Unit] = i match {
-            case Input.EOF ⇒
-              Done(Unit, Input.EOF)
-            case Input.Empty ⇒ Cont[Cmd, Unit](i ⇒ step(i))
-            case Input.El(e) ⇒
-              self ! StreamChunk(e)
-              Cont[Cmd, Unit](i ⇒ step(i))
-          }
-        (Cont[Cmd, Unit](i ⇒ step(i)))
-      }
+//       def handleResponses: Receive = {
+//         case x: init.Event ⇒
+//           val actor = receiverQueue.head
+//           receiverQueue = receiverQueue.tail
+//           actor.forward(x)
+//       }
 
-    (stream |>>> iteratee) onComplete {
-      case Success(result)  ⇒ self ! StreamFinished
-      case Failure(failure) ⇒ self ! failure
-    }
+//       def handleHighWaterMark: Receive = {
+//         case BackpressureBuffer.HighWatermarkReached ⇒
+//           context.children.foreach(_ ! BackpressureBuffer.HighWatermarkReached)
+//           previousBehavior = behavior
+//           behavior = handleResponses orElse {
+//             case BackpressureBuffer.LowWatermarkReached ⇒
+//               context.children.foreach(_ ! BackpressureBuffer.LowWatermarkReached)
+//               unstashAll()
+//               behavior = previousBehavior
+//             case _: SentinelCommand[_] ⇒ stash()
+//           }
+//       }
 
-    handleResponses orElse {
-      case StreamChunk(x) ⇒
-        connection ! init.Command(x)
+//       /* Upstream handler, stashes new requests until up stream is finished */
+//       def handleUpstream: Receive = handleResponses orElse handleHighWaterMark orElse {
+//         case UpstreamFinished ⇒
+//           unstashAll()
+//           context.unbecome()
+//         case _ ⇒ stash()
+//       }
 
-      case StreamFinished ⇒
-        context.parent ! UpstreamFinished
-        unstashAll()
-        context.unbecome()
+//       def default: Receive = handleResponses orElse handleHighWaterMark orElse {
+//         case o: Operation[Cmd, Evt] ⇒
+//           receiverQueue :+= operationHandler
+//           operationHandler forward o
 
-      case scala.util.Failure(e: Throwable) ⇒
-        log.error(e.getMessage)
-        context.stop(self)
+//         case uso: UpStreamOperation[Cmd, Evt] ⇒
+//           context.become(handleUpstream, discardOld = false)
+//           receiverQueue :+= upstreamHandler
+//           upstreamHandler forward uso
 
-      case BackpressureBuffer.HighWatermarkReached ⇒
-        context.become(handleResponses orElse {
-          case BackpressureBuffer.LowWatermarkReached ⇒
-            unstashAll()
-            context.unbecome()
-          case _: SentinelCommand | _: StreamChunk | StreamFinished ⇒ stash()
-        }, discardOld = false)
-      case _: SentinelCommand ⇒ stash()
-    }
-  }
-}
+//         //case dso: DownStreamOperation[Cmd, Evt] ⇒
 
-class WaitingSentinelClientWorker[Cmd, Evt](address: InetSocketAddress, stages: ⇒ PipelineStage[PipelineContext, Cmd, ByteString, Evt, ByteString],
-                                            workerDescription: String = "Sentinel Client Worker")(lowBytes: Long, highBytes: Long, maxBufferSize: Long) extends SentinelClientWorker(address, stages, workerDescription)(lowBytes, highBytes, maxBufferSize) {
+//         case Terminated(`connection`) ⇒
+//           log.error(workerDescription + " has been terminated due to a terminated TCP worker")
+//           context.stop(self)
 
-  import context.dispatcher
+//         case x: Terminated ⇒
+//           log.error(workerDescription + " has been terminated due to a internal error")
+//           context.stop(self)
+//       }
 
-  var requestRunning = false
-  val requests = Queue[SentinelCommand]()
+//     behavior = default
+//     behavior
+//   }
 
-  override def connected(init: Init[WithinActorContext, Cmd, Evt], connection: ActorRef): Receive = {
-    val r: Receive = {
-      case x: init.Event ⇒
-        receiverQueue.dequeue.forward(x)
-        requestRunning = false
-        if (requests.length > 0) connected(init, connection)(requests.dequeue)
+//   def receive = disconnected
+// }
 
-      case o: Operation[Cmd, Evt] ⇒
-        requestRunning match {
-          case false ⇒
-            super.connected(init, connection)(o)
-            requestRunning = true
-          case true ⇒ requests.enqueue(o)
-        }
+// // private class DownStreamHandler[Cmd, Evt](init: Init[WithinActorContext, Cmd, Evt], connection: ActorRef) extends Actor with ActorLogging with Stash {
+// //   import SentinelClientWorker._
+// //   import context.dispatcher
 
-      case o: StreamedOperation[Cmd, Evt] ⇒
-        requestRunning match {
-          case false ⇒
-            super.connected(init, connection)(o)
-            requestRunning = true
-          case true ⇒ requests.enqueue(o)
-        }
-    }
-    r orElse super.connected(init, connection)
-  }
-}
+// //   context watch connection
+
+// // }
+
+// class WaitingSentinelClientWorker[Cmd, Evt](address: InetSocketAddress, stages: ⇒ PipelineStage[PipelineContext, Cmd, ByteString, Evt, ByteString],
+//                                             workerDescription: String = "Sentinel Client Worker")(lowBytes: Long, highBytes: Long, maxBufferSize: Long) extends SentinelClientWorker(address, stages, workerDescription)(lowBytes, highBytes, maxBufferSize) {
+
+//   var requestRunning = false
+//   var requests = Queue[SentinelCommand[Evt]]()
+
+//   override def connected(init: Init[WithinActorContext, Cmd, Evt], connection: ActorRef): Receive = {
+//     val r: Receive = {
+//       case x: init.Event ⇒
+//         val actor = receiverQueue.head
+//         receiverQueue = receiverQueue.tail
+//         actor.forward(x)
+
+//         requestRunning = false
+//         if (requests.length > 0) connected(init, connection) {
+//           val cmd = requests.head
+//           requests = requests.tail
+//           cmd
+//         }
+
+//       case o: Operation[Cmd, Evt] ⇒
+//         requestRunning match {
+//           case false ⇒
+//             super.connected(init, connection)(o)
+//             requestRunning = true
+//           case true ⇒ requests :+= o
+//         }
+
+//       case o: UpStreamOperation[Cmd, Evt] ⇒
+//         requestRunning match {
+//           case false ⇒
+//             super.connected(init, connection)(o)
+//             requestRunning = true
+//           case true ⇒ requests :+= o
+//         }
+//     }
+//     r orElse super.connected(init, connection)
+//   }
+// }

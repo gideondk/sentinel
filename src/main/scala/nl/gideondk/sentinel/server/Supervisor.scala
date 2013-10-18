@@ -1,51 +1,62 @@
 package nl.gideondk.sentinel.server
 
-import java.net.InetSocketAddress
+// import java.net.InetSocketAddress
 
-import akka.actor.{ Actor, ActorLogging, ActorRef, ActorSystem, Deploy, Props, actorRef2Scala }
-import akka.io.{ BackpressureBuffer, PipelineContext, PipelineStage, Tcp }
-import akka.io.Tcp.{ Bind, Bound, CommandFailed, Connected }
-import akka.io.TcpPipelineHandler
-import akka.io.TcpPipelineHandler.{ Init, WithinActorContext }
-import akka.io.TcpReadWriteAdapter
+// import akka.actor.{ Actor, ActorLogging, ActorRef, ActorSystem, Deploy, Props, actorRef2Scala }
+// import akka.io.{ BackpressureBuffer, PipelineContext, PipelineStage, Tcp }
+// import akka.io.Tcp.{ Bind, Bound, CommandFailed, Connected }
+// import akka.io.TcpPipelineHandler
+// import akka.io.TcpPipelineHandler.{ Init, WithinActorContext }
+// import akka.io.TcpReadWriteAdapter
+// import akka.util.ByteString
+
+// import scala.concurrent.Future
+
+// class SentinelServer[Cmd, Evt](port: Int, description: String, stages: ⇒ PipelineStage[PipelineContext, Cmd, ByteString, Evt, ByteString],
+//                                requestHandler: Init[WithinActorContext, Cmd, Evt] ⇒ ActorRef)(lowBytes: Long, highBytes: Long, maxBufferSize: Long) extends Actor with ActorLogging {
+//   import context.dispatcher
+
+//   val tcp = akka.io.IO(Tcp)(context.system)
+
+//   val address = new InetSocketAddress(port)
+
+//   override def preStart = {
+//     tcp ! Bind(self, address)
+//   }
+
+//   def receive = {
+//     case Bound ⇒
+//       log.debug(description + " bound to " + address)
+
+//     case CommandFailed(cmd) ⇒
+//       cmd match {
+//         case x: Bind ⇒
+//           log.error(description + " failed to bind to " + address)
+//       }
+
+//     case req @ Connected(remoteAddr, localAddr) ⇒
+//       val init =
+//         TcpPipelineHandler.withLogger(log,
+//           stages >>
+//             new TcpReadWriteAdapter >>
+//       new BackpressureBuffer(lowBytes, highBytes, maxBufferSize))
+
+//       val connection = sender
+//       val handler = requestHandler(init)
+//       val tcpHandler = context.actorOf(TcpPipelineHandler.props(init, connection, handler).withDeploy(Deploy.local))
+
+//       handler ! SentinelServerHandler.RegisterTcpHandler(tcpHandler)
+//       connection ! Tcp.Register(tcpHandler)
+//   }
+// }
+
+import nl.gideondk.sentinel.Action
+import akka.io.PipelineStage
+import akka.actor.ActorRef
 import akka.util.ByteString
-
-import scala.concurrent.Future
-
-class SentinelServer[Cmd, Evt](port: Int, description: String, stages: ⇒ PipelineStage[PipelineContext, Cmd, ByteString, Evt, ByteString],
-                               requestHandler: Init[WithinActorContext, Cmd, Evt] ⇒ ActorRef)(lowBytes: Long, highBytes: Long, maxBufferSize: Long) extends Actor with ActorLogging {
-  import context.dispatcher
-
-  val tcp = akka.io.IO(Tcp)(context.system)
-
-  val address = new InetSocketAddress(port)
-
-  override def preStart = {
-    tcp ! Bind(self, address)
-  }
-
-  def receive = {
-    case Bound ⇒
-      log.debug(description + " bound to " + address)
-
-    case CommandFailed(cmd) ⇒
-      cmd match {
-        case x: Bind ⇒
-          log.error(description + " failed to bind to " + address)
-      }
-
-    case req @ Connected(remoteAddr, localAddr) ⇒
-      val init =
-        TcpPipelineHandler.withLogger(log,
-          stages >>
-            new TcpReadWriteAdapter >>
-            new BackpressureBuffer(lowBytes, highBytes, maxBufferSize))
-
-      val connection = sender
-      val handler = context.actorOf(TcpPipelineHandler.props(init, connection, requestHandler(init)).withDeploy(Deploy.local))
-      connection ! Tcp.Register(handler)
-  }
-}
+import akka.io.PipelineContext
+import akka.actor.ActorSystem
+import akka.actor.Props
 
 object SentinelServer {
   /** Creates a new SentinelServer
@@ -62,12 +73,7 @@ object SentinelServer {
    *  @return a new sentinel server, hosting on the defined port
    */
 
-  def async[Evt, Cmd](serverPort: Int, handler: Evt ⇒ Future[Cmd], description: String = "Sentinel Server")(stages: ⇒ PipelineStage[PipelineContext, Cmd, ByteString, Evt, ByteString], lowBytes: Long = 1024L * 2L, highBytes: Long = 1024L * 1024L, maxBufferSize: Long = 1024L * 1024L * 50L)(implicit system: ActorSystem): ActorRef = {
-      def newHandlerActor(init: Init[WithinActorContext, Cmd, Evt]) = system.actorOf(Props(new SentinelServerBasicAsyncHandler(init, handler)).withDispatcher("nl.gideondk.sentinel.sentinel-dispatcher"))
-    apply[Evt, Cmd](serverPort, description)(stages, newHandlerActor, lowBytes, highBytes, maxBufferSize)(system)
-  }
-
-  def apply[Evt, Cmd](serverPort: Int, description: String = "Sentinel Server")(stages: ⇒ PipelineStage[PipelineContext, Cmd, ByteString, Evt, ByteString], requestHandler: Init[WithinActorContext, Cmd, Evt] ⇒ ActorRef, lowBytes: Long = 1024L * 2L, highBytes: Long = 1024L * 1024L, maxBufferSize: Long = 1024L * 1024L * 50L)(implicit system: ActorSystem): ActorRef = {
-    system.actorOf(Props(new SentinelServer(serverPort, description, stages, requestHandler)(lowBytes, highBytes, maxBufferSize)))
+  def apply[Evt, Cmd](serverPort: Int, decider: Action.Decider[Evt, Cmd], description: String = "Sentinel Server")(stages: ⇒ PipelineStage[PipelineContext, Cmd, ByteString, Evt, ByteString], lowBytes: Long = 100L, highBytes: Long = 50 * 1024L, maxBufferSize: Long = 1000L * 1024L)(implicit system: ActorSystem): ActorRef = {
+    system.actorOf(Props(new ServerCore(serverPort, description, stages, decider)(lowBytes, highBytes, maxBufferSize)))
   }
 }
