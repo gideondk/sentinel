@@ -1,20 +1,20 @@
 package nl.gideondk.sentinel
 
-import scala.concurrent.Await
+import scala.concurrent.{ Await, ExecutionContext }
+import scala.concurrent.{ Future, Promise }
 import scala.concurrent.ExecutionContext.Implicits.global
-import scala.concurrent.Future
 import scala.concurrent.duration.Duration
 import scala.util.{ Failure, Success, Try }
+
+import akka.actor.ActorRef
+
 import scalaz._
 import scalaz.Scalaz._
-import scalaz.stream._
 import scalaz.effect.IO
-import scala.concurrent._
+import scalaz.contrib.std.scalaFuture.futureInstance
 
-import akka.actor._
-
-import scala.concurrent.Future
-import scalaz.contrib.std.scalaFuture._
+import scalaz.stream._
+import scalaz.stream.Process._
 
 final case class Task[A](get: IO[Future[Try[A]]]) { self ⇒
   def start: Future[Try[A]] = get.unsafePerformIO
@@ -60,8 +60,31 @@ trait TaskFunctions {
     Task(z.map(_.get).sequence[IO, Future[Try[A]]].map(x ⇒ Future.sequence(x).map(z ⇒ Try(z.filter(_.isSuccess).map(_.get)))))
 }
 
+trait TaskFutureConversions {
+  implicit def taskToFuture[A](t: Task[A]): Future[A] =
+    t.start.flatMap {
+      _ match {
+        case scala.util.Success(s) ⇒ Future.successful(s)
+        case scala.util.Failure(e) ⇒ Future.failed(e)
+      }
+    }
+
+  implicit def taskToFutureNT = new NaturalTransformation[Task, Future] {
+    def apply[A](fa: Task[A]): Future[A] = taskToFuture(fa)
+  }
+
+  implicit def futureToTask[A](f: Future[A]): Task[A] = Task(f)
+
+  implicit def futureToTaskNT = new NaturalTransformation[Future, Task] {
+    def apply[A](fa: Future[A]): Task[A] = futureToTask(fa)
+  }
+
+  implicit def taskProcessToFutureProcess[A](t: Process[Future, A]) = t.translate(futureToTaskNT)
+  implicit def futureProcessToTaskProcess[A](t: Process[Task, A]) = t.translate(taskToFutureNT)
+}
+
 trait TaskScalazConversions {
-  implicit def taskToScalazTask[T](t: ⇒ Task[T]): scalaz.concurrent.Task[T] = {
+  implicit def taskToScalazTask[A](t: ⇒ Task[A]): scalaz.concurrent.Task[A] = {
     scalaz.concurrent.Task.async {
       register ⇒
         t.start.onComplete {
@@ -95,7 +118,7 @@ trait TaskScalazConversions {
   implicit def taskProcessToScalazTaskProcess[A](t: Process[Task, A]) = t.translate(taskToScalazTaskNT)
 }
 
-trait TaskImplementation extends TaskFunctions with TaskScalazConversions {
+trait TaskImplementation extends TaskFunctions with TaskScalazConversions with TaskFutureConversions {
   implicit def taskMonadInstance = new TaskMonad {}
   implicit def taskComonadInstance(implicit d: Duration) = new TaskComonad {
     override protected val atMost = d
@@ -103,22 +126,7 @@ trait TaskImplementation extends TaskFunctions with TaskScalazConversions {
   implicit def taskCatchableInstance = new TaskCatchable {}
 }
 
-trait TaskScalazStreamImplementation extends TaskImplementation {
-  import Process._
-  def actorResource[O](target: ActorRef)(acquire: ActorRef ⇒ Task[_])(release: ActorRef ⇒ Task[_])(step: ActorRef ⇒ Task[O]): Process[Task, O] = {
-      def go(step: Task[O], onExit: Process[Task, O]): Process[Task, O] =
-        await[Task, O, O](step)(
-          o ⇒ emit(o) ++ go(step, onExit),
-          onExit,
-          onExit)
-    await(acquire(target))(x ⇒ {
-      val onExit = Process.suspend(eval(release(target)).drain)
-      go(step(target), onExit)
-    }, halt, halt)
-  }
-}
-
-object Task extends TaskScalazStreamImplementation {
+object Task extends TaskImplementation {
 }
 
 trait FutureCatchable extends Catchable[Future] {
