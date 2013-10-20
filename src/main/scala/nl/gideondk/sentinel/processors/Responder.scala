@@ -10,22 +10,15 @@ import akka.io.TcpPipelineHandler.{ Init, WithinActorContext }
 import akka.pattern.ask
 import akka.util.Timeout
 
+import scalaz.contrib.std.scalaFuture.futureInstance
+
 import scalaz.stream.Process
 import scalaz.stream.Process._
 
 import nl.gideondk.sentinel._
+import CatchableFuture._
 
 object Responder {
-  def ResponderSink[O](acquire: Future[ActorRef])(release: ActorRef ⇒ Future[Unit])(step: ActorRef ⇒ Future[O])(implicit context: ExecutionContext): Process[Future, O] = {
-      def go(step: Future[O], onExit: Process[Future, O]): Process[Future, O] =
-        await[Future, O, O](step)(o ⇒ emit(o) ++ go(step, onExit), onExit, onExit)
-
-    await(acquire)(r ⇒ {
-      val onExit = eval(release(r)).drain
-      go(step(r), onExit)
-    }, halt, halt)
-  }
-
   trait HandleResult
   case class HandleAsyncResult[Cmd](response: Cmd) extends HandleResult
   case class HandleStreamResult[Cmd](stream: Process[Future, Cmd]) extends HandleResult
@@ -48,42 +41,72 @@ class Responder[Cmd, Evt](init: Init[WithinActorContext, Cmd, Evt], streamChunkT
 
   var responseQueue = Queue.empty[Promise[HandleResult]]
 
+  def processAction(data: Evt, action: ResponderAction[Evt, Cmd]) = {
+    val worker = self
+    val future = action match {
+      case x: Answer[Evt, Cmd] ⇒
+        val promise = Promise[HandleResult]()
+        responseQueue :+= promise
+
+        for {
+          response ← x.f(data) map (result ⇒ HandleAsyncResult(result))
+        } yield {
+          promise.success(response)
+          worker ! DequeueResponse
+        }
+
+      case x: ProduceStream[Evt, Cmd] ⇒
+        val promise = Promise[HandleResult]()
+        responseQueue :+= promise
+
+        for {
+          response ← x.f(data) map (result ⇒ HandleStreamResult(result))
+        } yield {
+          promise.success(response)
+          worker ! DequeueResponse
+        }
+
+      case x: ConsumeStream[Evt, Cmd] ⇒
+        val promise = Promise[HandleResult]()
+        responseQueue :+= promise
+
+        val streamPromise = Promise[Process[Future, Evt]]()
+        context.parent ! Registration.StreamReplyRegistration(streamPromise)
+
+        for {
+          source ← streamPromise.future
+          response ← x.f(data)(source) map (result ⇒ HandleAsyncResult(result))
+        } yield {
+          promise.success(response)
+          worker ! DequeueResponse
+        }
+
+      case x: ReactToStream[Evt, Cmd] ⇒
+        val promise = Promise[HandleResult]()
+        responseQueue :+= promise
+
+        val streamPromise = Promise[Process[Future, Evt]]()
+        context.parent ! Registration.StreamReplyRegistration(streamPromise)
+
+        for {
+          source ← streamPromise.future
+          response ← x.f(data) map (result ⇒ HandleStreamResult(source through result))
+        } yield {
+          promise.success(response)
+          worker ! DequeueResponse
+        }
+    }
+
+    future.onFailure {
+      case e ⇒
+        log.error(e, e.getMessage)
+        context.stop(self)
+    }
+  }
+
   def handleRequest: Receive = {
-    case x: Answer[Evt, Cmd] ⇒
-      val me = self
-      val promise = Promise[HandleResult]()
-      responseQueue :+= promise
-
-      val fut = for {
-        response ← x.future map (result ⇒ HandleAsyncResult(result))
-      } yield {
-        promise.success(response)
-        me ! DequeueResponse
-      }
-
-      fut.onFailure {
-        case e ⇒
-          log.error(e, e.getMessage)
-          context.stop(self)
-      }
-
-    case x: ProduceStream[Evt, Cmd] ⇒
-      val me = self
-      val promise = Promise[HandleResult]()
-      responseQueue :+= promise
-
-      val fut = for {
-        response ← x.futureProcess map (result ⇒ HandleStreamResult(result))
-      } yield {
-        promise.success(response)
-        me ! DequeueResponse
-      }
-
-      fut.onFailure {
-        case e ⇒
-          log.error(e, e.getMessage)
-          context.stop(self)
-      }
+    case x: ResponderActionAndData[Evt, Cmd] ⇒
+      processAction(x.data, x.action)
   }
 
   def handleDequeue: Receive = {
@@ -113,7 +136,8 @@ class Responder[Cmd, Evt](init: Init[WithinActorContext, Cmd, Evt], streamChunkT
     case x: HandleStreamResult[Cmd] ⇒
       val worker = self
       implicit val timeout = streamChunkTimeout
-      x.stream to ResponderSink((worker ? StartStreamHandling).map(x ⇒ worker))((a: ActorRef) ⇒ (a ? StreamProducerEnded).mapTo[Unit])((a: ActorRef) ⇒ Future { (c: Cmd) ⇒ (self ? StreamProducerChunk(c)).mapTo[Unit] })
+      val s = x.stream to actorResource((worker ? StartStreamHandling).map(x ⇒ worker))((a: ActorRef) ⇒ (a ? StreamProducerEnded).mapTo[Unit])((a: ActorRef) ⇒ Future { (c: Cmd) ⇒ (self ? StreamProducerChunk(c)).mapTo[Unit] })
+      s.run
       context.become(handleRequestAndStreamResponse)
     case x: StreamProducerMessage ⇒
       log.error("Internal leakage in stream: received stream unexpected stream chunk")

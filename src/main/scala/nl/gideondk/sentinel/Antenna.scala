@@ -17,6 +17,8 @@ class AntennaMailbox(settings: Settings, cfg: Config) extends UnboundedPriorityM
   PriorityGenerator {
     case x: akka.io.Tcp.Event            ⇒ 0
     case x: Management.ManagementMessage ⇒ 1
+    case x: Registration[_]              ⇒ 1
+    case x: Reply[_]                     ⇒ 2
     case x: Command[_]                   ⇒ 2
     case _                               ⇒ 10
   })
@@ -66,11 +68,13 @@ class Antenna[Cmd, Evt](init: Init[WithinActorContext, Cmd, Evt], Resolver: Sent
       case x: Reply.StreamResponseChunk[Cmd] ⇒
         tcpHandler ! init.Command(x.payload)
 
+      case x: Registration[Evt] ⇒
+        consumer ! x
+
       case init.Event(data) ⇒ {
         Resolver.process(data) match {
-          case x: ResponderAction.Reaction[Evt, Cmd] ⇒ responder ! x
-          case ConsumerAction.Consume                ⇒ consumer ! init.Event(data) // Pass through
-          case ConsumerAction.Ignore                 ⇒ ()
+          case x: ResponderAction[Evt, Cmd] ⇒ responder ! ResponderActionAndData[Evt, Cmd](x, data)
+          case x: ConsumerAction            ⇒ consumer ! ConsumerActionAndData[Evt](x, data)
         }
       }
 

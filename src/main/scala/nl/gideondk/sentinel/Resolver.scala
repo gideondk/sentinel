@@ -2,7 +2,7 @@ package nl.gideondk.sentinel
 
 import scala.concurrent.Future
 
-import scalaz.stream.Process
+import scalaz.stream._
 
 import ConsumerAction._
 import ResponderAction._
@@ -19,15 +19,16 @@ trait ConsumeResolver[Evt, Cmd] extends Resolver[Evt, Cmd] {
 
 trait ResponseResolver[Evt, Cmd] extends Resolver[Evt, Cmd] {
   import ResponderAction._
-  def answer(f: ⇒ Future[Cmd]): Answer[Evt, Cmd] = Answer(f)
 
-  def handle(f: ⇒ Unit): Handle[Evt, Cmd] = Handle()
+  def answer(f: Evt ⇒ Future[Cmd]): Answer[Evt, Cmd] = Answer(f)
 
-  def produce(p: ⇒ Future[Process[Future, Cmd]]): ProduceStream[Evt, Cmd] = ProduceStream(p)
+  def handle(f: Evt ⇒ Unit): Handle[Evt, Cmd] = Handle(f)
 
-  def react(p: ⇒ Future[Process[Future, Cmd]]): ReactToStream[Evt, Cmd] = ReactToStream(p)
+  def consumeStream(f: Evt ⇒ Process[Future, Evt] ⇒ Future[Cmd]): ConsumeStream[Evt, Cmd] = ConsumeStream(f)
 
-  def consumeStream(p: ⇒ Future[Process[Future, Cmd]]): ConsumeStream[Evt, Cmd] = ConsumeStream(p)
+  def produce(f: Evt ⇒ Future[Process[Future, Cmd]]): ProduceStream[Evt, Cmd] = ProduceStream(f)
+
+  def react(f: Evt ⇒ Future[Channel[Future, Evt, Cmd]]): ReactToStream[Evt, Cmd] = ReactToStream(f)
 }
 
 trait SentinelResolver[Evt, Cmd] extends ConsumeResolver[Evt, Cmd] with ResponseResolver[Evt, Cmd] {

@@ -28,48 +28,54 @@ object Consumer {
   case object RegisterStreamConsumer extends StreamConsumerMessage
   case object ReleaseStreamConsumer extends StreamConsumerMessage
 
+  trait ConsumerData[Evt]
+
+  case class DataChunk[Evt](c: Evt) extends ConsumerData[Evt]
+  case class EndOfStream[Evt]() extends ConsumerData[Evt]
+
   class ConsumerMailbox(settings: Settings, cfg: Config) extends UnboundedPriorityMailbox(
     PriorityGenerator {
       case x: StreamConsumerMessage        ⇒ 0
       case x: Management.ManagementMessage ⇒ 1
       case _                               ⇒ 10
     })
-
-  def consumerResource[O](acquire: Future[ActorRef])(release: ActorRef ⇒ Future[Unit])(step: ActorRef ⇒ Future[O])(terminator: O ⇒ Boolean, includeTerminator: Boolean)(implicit context: ExecutionContext): Process[Future, O] = {
-      def go(step: Future[O], onExit: Process[Future, O]): Process[Future, O] =
-        await[Future, O, O](step)(
-          o ⇒ {
-            if (terminator(o)) {
-              if (includeTerminator) {
-                emit(o) ++ go(Future.failed(End), onExit)
-              } else {
-                go(Future.failed(End), onExit)
-              }
-            } else {
-              emit(o) ++ go(step, onExit)
-            }
-          }, onExit, onExit)
-
-    await(acquire)(r ⇒ {
-      val onExit = eval(release(r)).drain
-      go(step(r), onExit)
-    }, halt, halt)
-  }
 }
 
 class Consumer[Cmd, Evt](init: Init[WithinActorContext, Cmd, Evt], streamChunkTimeout: Timeout = Timeout(5 seconds)) extends Actor with ActorLogging {
   import Registration._
   import Consumer._
+  import ConsumerAction._
 
   import context.dispatcher
 
-  var hooks = Queue[Promise[Evt]]()
-  var buffer = Queue[Promise[Evt]]()
+  var hooks = Queue[Promise[ConsumerData[Evt]]]()
+  var buffer = Queue[Promise[ConsumerData[Evt]]]()
 
   var registrations = Queue[Registration[Evt]]()
   var currentPromise: Option[Promise[Evt]] = None
 
   var runningSource: Option[Process[Future, Evt]] = None
+
+  def processAction(data: Evt, action: ConsumerAction) = {
+      def handleConsumerData(cd: ConsumerData[Evt]) = {
+        hooks.headOption match {
+          case Some(x) ⇒
+            x.success(cd)
+            hooks = hooks.tail
+          case None ⇒
+            buffer :+= Promise.successful(cd)
+        }
+      }
+    action match {
+      case Consume   ⇒ handleConsumerData(DataChunk(data))
+      case EndStream ⇒ handleConsumerData(EndOfStream[Evt]())
+      case ConsumeAndEndStream ⇒
+        handleConsumerData(DataChunk(data))
+        handleConsumerData(EndOfStream[Evt]())
+
+      case Ignore ⇒ ()
+    }
+  }
 
   def popAndSetHook = {
     val worker = self
@@ -79,10 +85,17 @@ class Consumer[Cmd, Evt](init: Init[WithinActorContext, Cmd, Evt], streamChunkTi
     implicit val timeout = streamChunkTimeout
 
     registration match {
-      case x: ReplyRegistration[Evt] ⇒ x.promise.completeWith((self ? AskNextChunk).mapTo[Promise[Evt]].flatMap(_.future))
+      case x: ReplyRegistration[Evt] ⇒ x.promise.completeWith((self ? AskNextChunk).mapTo[Promise[DataChunk[Evt]]].flatMap(_.future.map(_.c))) // Handle stream leakage...
       case x: StreamReplyRegistration[Evt] ⇒
-        val resource = consumerResource((worker ? RegisterStreamConsumer).map(x ⇒ worker))((x: ActorRef) ⇒ (x ? ReleaseStreamConsumer).mapTo[Unit])((x: ActorRef) ⇒
-          (x ? AskNextChunk).mapTo[Promise[Evt]].flatMap(_.future))(x.terminator, x.includeTerminator)
+        val resource = actorResource((worker ? RegisterStreamConsumer).map(x ⇒ worker))((x: ActorRef) ⇒ (x ? ReleaseStreamConsumer).mapTo[Unit]) {
+          (x: ActorRef) ⇒
+            (x ? AskNextChunk).mapTo[Promise[ConsumerData[Evt]]].flatMap(_.future).map {
+              _ match {
+                case x: EndOfStream[Evt] ⇒ throw End
+                case x: DataChunk[Evt]   ⇒ x.c
+              }
+            }
+        }
 
         runningSource = Some(resource)
         x.promise success resource
@@ -110,20 +123,13 @@ class Consumer[Cmd, Evt](init: Init[WithinActorContext, Cmd, Evt], streamChunkTi
           buffer = buffer.tail
           p
         case None ⇒
-          val p = Promise[Evt]()
+          val p = Promise[ConsumerData[Evt]]()
           hooks :+= p
           p
       }
       sender ! promise
 
-    case init.Event(data) ⇒
-      hooks.headOption match {
-        case Some(x) ⇒
-          x.success(data)
-          hooks = hooks.tail
-        case None ⇒
-          buffer :+= Promise.successful(data)
-      }
+    case x: ConsumerActionAndData[Evt] ⇒ processAction(x.data, x.action)
 
   }
 

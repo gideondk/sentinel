@@ -31,9 +31,9 @@ trait Client[Cmd, Evt] {
     promise.future
   }
 
-  def askStream(command: Cmd, terminator: Evt ⇒ Boolean, includeTerminator: Boolean)(implicit context: ExecutionContext): Task[Process[Future, Evt]] = Task {
+  def askStream(command: Cmd)(implicit context: ExecutionContext): Task[Process[Future, Evt]] = Task {
     val promise = Promise[Process[Future, Evt]]()
-    actor ! Command.AskStream(command, StreamReplyRegistration(terminator, includeTerminator, promise))
+    actor ! Command.AskStream(command, StreamReplyRegistration(promise))
     promise.future
   }
 
@@ -43,11 +43,11 @@ trait Client[Cmd, Evt] {
     promise.future
   }
 
-  def conversate(command: Cmd, source: Process[Future, Evt], terminator: Evt ⇒ Boolean, includeTerminator: Boolean): Task[Process[Future, Evt]] = Task {
-    val promise = Promise[Process[Future, Evt]]()
-    actor ! Command.Conversate(command, source, StreamReplyRegistration(terminator, includeTerminator, promise))
-    promise.future
-  }
+  // def conversate(command: Cmd): Task[Channel[Future, Cmd, Evt]] = Task {
+  //   val promise = Promise[Process[Future, Evt]]()
+  //   actor ! Command.Conversate(command, source, StreamReplyRegistration(terminator, includeTerminator, promise))
+  //   promise.future
+  // }
 }
 
 object Client {
