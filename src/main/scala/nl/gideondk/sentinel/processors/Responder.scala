@@ -1,4 +1,4 @@
-package nl.gideondk.sentinel
+package nl.gideondk.sentinel.processors
 
 import scala.collection.immutable.Queue
 import scala.concurrent.{ ExecutionContext, Future, Promise }
@@ -13,7 +13,7 @@ import akka.util.Timeout
 import scalaz.stream.Process
 import scalaz.stream.Process._
 
-import ResponderAction._
+import nl.gideondk.sentinel._
 
 object Responder {
   def ResponderSink[O](acquire: Future[ActorRef])(release: ActorRef ⇒ Future[Unit])(step: ActorRef ⇒ Future[O])(implicit context: ExecutionContext): Process[Future, O] = {

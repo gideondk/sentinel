@@ -11,6 +11,8 @@ import akka.dispatch._
 import akka.io._
 import akka.io.TcpPipelineHandler.{ Init, WithinActorContext }
 
+import processors._
+
 class AntennaMailbox(settings: Settings, cfg: Config) extends UnboundedPriorityMailbox(
   PriorityGenerator {
     case x: akka.io.Tcp.Event            ⇒ 0

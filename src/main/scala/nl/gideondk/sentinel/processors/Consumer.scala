@@ -1,4 +1,4 @@
-package nl.gideondk.sentinel
+package nl.gideondk.sentinel.processors
 
 import scala.collection.immutable.Queue
 import scala.concurrent._
@@ -16,6 +16,7 @@ import akka.util.Timeout
 import scalaz.stream._
 import scalaz.stream.Process._
 
+import nl.gideondk.sentinel._
 import Registration._
 
 object Consumer {
