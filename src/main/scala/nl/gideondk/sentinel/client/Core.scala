@@ -37,11 +37,17 @@ trait Client[Cmd, Evt] {
     promise.future
   }
 
-  // def sendStream(command: Cmd, source: Process[Future, Evt]): Task[Evt] = Task {
-  //   val promise = Promise[Evt]()
-  //   actor ! Command.AskStream(command, StreamReplyRegistration(terminator, includeTerminator, promise))
-  //   promise.future
-  // }
+  def sendStream(command: Cmd, source: Process[Future, Evt]): Task[Evt] = Task {
+    val promise = Promise[Evt]()
+    actor ! Command.SendStream(command, source, ReplyRegistration(promise))
+    promise.future
+  }
+
+  def conversate(command: Cmd, source: Process[Future, Evt], terminator: Evt ⇒ Boolean, includeTerminator: Boolean): Task[Process[Future, Evt]] = Task {
+    val promise = Promise[Process[Future, Evt]]()
+    actor ! Command.Conversate(command, source, StreamReplyRegistration(terminator, includeTerminator, promise))
+    promise.future
+  }
 }
 
 object Client {

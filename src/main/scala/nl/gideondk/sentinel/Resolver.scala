@@ -21,6 +21,8 @@ trait ResponseResolver[Evt, Cmd] extends Resolver[Evt, Cmd] {
   import ResponderAction._
   def answer(f: ⇒ Future[Cmd]): Answer[Evt, Cmd] = Answer(f)
 
+  def handle(f: ⇒ Unit): Handle[Evt, Cmd] = Handle()
+
   def produce(p: ⇒ Future[Process[Future, Cmd]]): ProduceStream[Evt, Cmd] = ProduceStream(p)
 
   def react(p: ⇒ Future[Process[Future, Cmd]]): ReactToStream[Evt, Cmd] = ReactToStream(p)

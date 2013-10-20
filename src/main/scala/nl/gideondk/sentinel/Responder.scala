@@ -66,6 +66,7 @@ class Responder[Cmd, Evt](init: Init[WithinActorContext, Cmd, Evt], streamChunkT
           log.error(e, e.getMessage)
           context.stop(self)
       }
+
     case x: ProduceStream[Evt, Cmd] ⇒
       val me = self
       val promise = Promise[HandleResult]()
@@ -108,7 +109,7 @@ class Responder[Cmd, Evt](init: Init[WithinActorContext, Cmd, Evt], streamChunkT
   }
 
   def handleRequestAndResponse: Receive = handleRequest orElse handleDequeue orElse {
-    case x: HandleAsyncResult[Cmd] ⇒ context.parent ! Command.Reply(x.response)
+    case x: HandleAsyncResult[Cmd] ⇒ context.parent ! Reply.Response(x.response)
     case x: HandleStreamResult[Cmd] ⇒
       val worker = self
       implicit val timeout = streamChunkTimeout
@@ -124,7 +125,7 @@ class Responder[Cmd, Evt](init: Init[WithinActorContext, Cmd, Evt], streamChunkT
       sender ! ReadyForStream
     case StreamProducerChunk(c) ⇒
       sender ! StreamProducerChunkReceived
-      context.parent ! Command.StreamReply(c)
+      context.parent ! Reply.StreamResponseChunk(c)
     case StreamProducerEnded ⇒
       sender ! StreamProducerChunkReceived
       context.become(handleRequestAndResponse)
