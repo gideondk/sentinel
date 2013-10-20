@@ -67,10 +67,14 @@ class Antenna[Cmd, Evt](init: Init[WithinActorContext, Cmd, Evt], decider: Actio
       case x: Command.Reply[Cmd] ⇒
         tcpHandler ! init.Command(x.payload)
 
+      case x: Command.StreamReply[Cmd] ⇒
+        tcpHandler ! init.Command(x.payload)
+
       case init.Event(data) ⇒ {
         decider.process(data) match {
-          case x: Action.Answer[Evt, Cmd] ⇒ answerer ! x
-          case Action.Consume             ⇒ consumer ! init.Event(data) // Pass through
+          case x: Action.Reaction[Evt, Cmd] ⇒ answerer ! x
+          case Action.Consume               ⇒ consumer ! init.Event(data) // Pass through
+          case Action.Ignore                ⇒ ()
         }
       }
 

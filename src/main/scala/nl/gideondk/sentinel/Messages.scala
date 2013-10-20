@@ -32,14 +32,11 @@ object Command {
   case class AskStream[Cmd, Evt](payload: Cmd, registration: StreamReplyRegistration[Evt]) extends Command[Cmd]
 
   case class Reply[Cmd](payload: Cmd) extends Command[Cmd]
+  case class StreamReply[Cmd](payload: Cmd) extends Command[Cmd]
 }
 
 object Management {
   trait ManagementMessage
   case class RegisterTcpHandler(h: ActorRef) extends ManagementMessage
-
-  //case class StreamReplyRegistration[Evt](promise: Promise[Process[Future, Evt]]) extends Registration[Evt]
-
-  case object ReplyRegistered extends ManagementMessage
 }
 

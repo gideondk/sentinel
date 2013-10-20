@@ -33,7 +33,6 @@ class ConsumerMailbox(settings: Settings, cfg: Config) extends UnboundedPriority
     case _                               ⇒ 10
   })
 
-object RxProcessors {
   import Action._
 
   def consumerResource[O](acquire: Future[ActorRef])(release: ActorRef ⇒ Future[Unit])(step: ActorRef ⇒ Future[O])(terminator: O ⇒ Boolean, includeTerminator: Boolean)(implicit context: ExecutionContext): Process[Future, O] = {
@@ -66,9 +65,6 @@ object RxProcessors {
     var buffer = Queue[Promise[Evt]]()
 
     var registrations = Queue[Registration[Evt]]()
-
-    //var registrations = Queue[Management.RegisterReply[Evt]]()
-
     var currentPromise: Option[Promise[Evt]] = None
 
     var runningSource: Option[Process[Future, Evt]] = None
@@ -93,14 +89,6 @@ object RxProcessors {
           runningSource = Some(resource)
           x.promise success resource
       }
-
-      // implicit val timeout = Timeout(5 seconds)
-
-      // val resource = consumerResource((me ? RegisterSource).map(x ⇒ self))((x: ActorRef) ⇒ (x ? ReleaseSource).mapTo[Unit])((x: ActorRef) ⇒
-      //   (x ? AskNextChunk).mapTo[Promise[Evt]].flatMap(_.future))(registration.terminator, registration.includeTerminator)
-
-      // runningSource = Some(resource)
-      // registration.promise success resource
     }
 
     var behavior: Receive = {
@@ -144,68 +132,4 @@ object RxProcessors {
     }
 
     def receive = behavior
-  }
-
-  class Answerer[Cmd, Evt](init: Init[WithinActorContext, Cmd, Evt]) extends Actor with ActorLogging {
-    import context.dispatcher
-
-    case class HandleAsyncResult(response: Cmd)
-    case object DequeueResponse
-
-    var responseQueue = Queue.empty[Promise[HandleAsyncResult]]
-    var behavior: Receive = handleRequestAndResponse
-
-    def handleRequest: Receive = {
-      case x: Answer[Evt, Cmd] ⇒
-        val serverWorker = self
-        val promise = Promise[HandleAsyncResult]()
-        responseQueue :+= promise
-
-        val fut = for {
-          response ← x.f map (result ⇒ HandleAsyncResult(result))
-        } yield {
-          promise.success(response)
-          serverWorker ! DequeueResponse
-        }
-
-        fut.onFailure {
-          // If the future failed, message sequence isn't certain; tear down line to let client recover.
-          case e ⇒
-            log.error(e, e.getMessage)
-            context.stop(self)
-        }
-    }
-
-    def handleRequestAndResponse: Receive = handleRequest orElse {
-      case x: HandleAsyncResult ⇒ context.parent ! Command.Reply(x.response)
-      // x.response match {
-      //   case Some(r) ⇒ context.parent ! Command.Reply(r)
-      //   case None ⇒
-      //     log.error("Stream didn't result in a value")
-      //     context.stop(self)
-      // }
-
-      case DequeueResponse ⇒ {
-          def dequeueAndSend: Unit = {
-            if (!responseQueue.isEmpty && responseQueue.front.isCompleted) {
-              // TODO: Should be handled a lot safer!
-              val promise = responseQueue.head
-              responseQueue = responseQueue.tail
-              promise.future.value match {
-                case Some(Success(v)) ⇒
-                  self ! v
-                  dequeueAndSend
-                case Some(Failure(e)) ⇒
-                  log.error(e, e.getMessage)
-                  context.stop(self)
-              }
-            }
-
-          }
-        dequeueAndSend
-      }
-    }
-
-    def receive = behavior
-  }
 }

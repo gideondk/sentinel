@@ -28,22 +28,22 @@ object Action {
   trait Reaction[Evt, Cmd] extends Action
 
   trait StreamReaction[Evt, Cmd] extends Reaction[Evt, Cmd] {
-    def core: Process[Future, Cmd]
+    def futureProcess: Future[Process[Future, Cmd]]
   }
 
-  case class Answer[Evt, Cmd](f: Future[Cmd]) extends Reaction[Evt, Cmd]
-  case class ConsumeStream[Evt, Cmd](val core: Process[Future, Cmd]) extends StreamReaction[Evt, Cmd]
-  case class ProduceStream[Evt, Cmd](val core: Process[Future, Cmd]) extends StreamReaction[Evt, Cmd]
-  case class ReactToStream[Evt, Cmd](val core: Process[Future, Cmd]) extends StreamReaction[Evt, Cmd]
+  case class Answer[Evt, Cmd](future: Future[Cmd]) extends Reaction[Evt, Cmd]
+  case class ConsumeStream[Evt, Cmd](val futureProcess: Future[Process[Future, Cmd]]) extends StreamReaction[Evt, Cmd]
+  case class ProduceStream[Evt, Cmd](val futureProcess: Future[Process[Future, Cmd]]) extends StreamReaction[Evt, Cmd]
+  case class ReactToStream[Evt, Cmd](val futureProcess: Future[Process[Future, Cmd]]) extends StreamReaction[Evt, Cmd]
 
   trait Decider[Evt, Cmd] {
     def answer(f: ⇒ Future[Cmd]): Answer[Evt, Cmd] = Answer(f)
 
-    def produce(p: ⇒ Process[Future, Cmd]): ProduceStream[Evt, Cmd] = ProduceStream(p)
+    def produce(p: ⇒ Future[Process[Future, Cmd]]): ProduceStream[Evt, Cmd] = ProduceStream(p)
 
-    def react(p: ⇒ Process[Future, Cmd]): ReactToStream[Evt, Cmd] = ReactToStream(p)
+    def react(p: ⇒ Future[Process[Future, Cmd]]): ReactToStream[Evt, Cmd] = ReactToStream(p)
 
-    def consumeStream(p: ⇒ Process[Future, Cmd]): ConsumeStream[Evt, Cmd] = ConsumeStream(p)
+    def consumeStream(p: ⇒ Future[Process[Future, Cmd]]): ConsumeStream[Evt, Cmd] = ConsumeStream(p)
 
     def consume = Consume
 
