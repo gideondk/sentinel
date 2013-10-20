@@ -1,4 +1,4 @@
-package nl.gideondk.sentinel.rx
+package nl.gideondk.sentinel
 
 import scala.collection.immutable.Queue
 import scala.concurrent.{ Future, Promise }
@@ -58,10 +58,18 @@ object RxProcessors {
   }
 
   class Consumer[Cmd, Evt](init: Init[WithinActorContext, Cmd, Evt]) extends Actor with ActorLogging {
+    import Registration._
+
     import context.dispatcher
 
     var hooks = Queue[Promise[Evt]]()
-    var queue = Queue[Promise[Evt]]()
+    var buffer = Queue[Promise[Evt]]()
+
+    var registrations = Queue[Registration[Evt]]()
+
+    //var registrations = Queue[Management.RegisterReply[Evt]]()
+
+    var currentPromise: Option[Promise[Evt]] = None
 
     var runningSource: Option[Process[Future, Evt]] = None
 
@@ -69,18 +77,30 @@ object RxProcessors {
     case object RegisterSource extends InternalConsumerMessage
     case object ReleaseSource extends InternalConsumerMessage
 
-    def popAndSetSource = {
+    implicit val timeout = Timeout(5 seconds)
+
+    def popAndSetHook = {
       val me = self
       val registration = registrations.head
       registrations = registrations.tail
 
-      implicit val timeout = Timeout(5 seconds)
+      registration match {
+        case x: ReplyRegistration[Evt] ⇒ x.promise.completeWith((self ? AskNextChunk).mapTo[Promise[Evt]].flatMap(_.future))
+        case x: StreamReplyRegistration[Evt] ⇒
+          val resource = consumerResource((me ? RegisterSource).map(x ⇒ self))((x: ActorRef) ⇒ (x ? ReleaseSource).mapTo[Unit])((x: ActorRef) ⇒
+            (x ? AskNextChunk).mapTo[Promise[Evt]].flatMap(_.future))(x.terminator, x.includeTerminator)
 
-      val resource = consumerResource((me ? RegisterSource).map(x ⇒ self))((x: ActorRef) ⇒ (x ? ReleaseSource).mapTo[Unit])((x: ActorRef) ⇒
-        (x ? AskNextChunk).mapTo[Promise[Evt]].flatMap(_.future))(registration.terminator, registration.includeTerminator)
+          runningSource = Some(resource)
+          x.promise success resource
+      }
 
-      runningSource = Some(resource)
-      registration.promise success resource
+      // implicit val timeout = Timeout(5 seconds)
+
+      // val resource = consumerResource((me ? RegisterSource).map(x ⇒ self))((x: ActorRef) ⇒ (x ? ReleaseSource).mapTo[Unit])((x: ActorRef) ⇒
+      //   (x ? AskNextChunk).mapTo[Promise[Evt]].flatMap(_.future))(registration.terminator, registration.includeTerminator)
+
+      // runningSource = Some(resource)
+      // registration.promise success resource
     }
 
     var behavior: Receive = {
@@ -89,13 +109,13 @@ object RxProcessors {
 
       case ReleaseSource ⇒
         runningSource = None
-        if (registrations.headOption.isDefined) popAndSetSource
+        if (hooks.headOption.isDefined) popAndSetHook
         sender ! ()
 
       case AskNextChunk ⇒
-        val promise = queue.headOption match {
+        val promise = buffer.headOption match {
           case Some(p) ⇒
-            queue = queue.tail
+            buffer = buffer.tail
             p
           case None ⇒
             val p = Promise[Evt]()
@@ -104,9 +124,9 @@ object RxProcessors {
         }
         sender ! promise
 
-      case rc: Management.RegisterReply[Evt] ⇒
+      case rc: Registration[Evt] ⇒
         registrations :+= rc
-        if (runningSource.isEmpty && registrations.headOption.isDefined) popAndSetSource
+        if (runningSource.isEmpty && currentPromise.isEmpty) popAndSetHook
 
       case init.Event(data) ⇒
         hooks.headOption match {
@@ -114,16 +134,13 @@ object RxProcessors {
             x.success(data)
             hooks = hooks.tail
           case None ⇒
-            queue :+= Promise.successful(data)
+            buffer :+= Promise.successful(data)
         }
 
     }
 
-    var registrations = Queue[Management.RegisterReply[Evt]]()
-    var eventBuffer = Queue[Evt]()
-
     override def postStop() = {
-      (hooks ++ queue).foreach(_.failure(new Exception("Actor quit unexpectedly")))
+      hooks.foreach(_.failure(new Exception("Actor quit unexpectedly")))
     }
 
     def receive = behavior

@@ -35,7 +35,7 @@ class RequestResponseSpec extends WordSpec with ShouldMatchers {
 
   //def worker(implicit system: ActorSystem) = system.actorOf(Props(new SentinelClientWorker(new InetSocketAddress("localhost", 9999), PingPong.stages, "Worker")(1, 1, 10)).withDispatcher("nl.gideondk.sentinel.sentinel-dispatcher"))
 
-  def client(implicit system: ActorSystem) = Client("localhost", 9999, RandomRouter(32), "Worker", 5 seconds, PingPong.stages)(system)
+  def client(implicit system: ActorSystem) = Client("localhost", 9999, RandomRouter(16), "Worker", 5 seconds, PingPong.stages)(system)
 
   def server(implicit system: ActorSystem) = SentinelServer(9999, PingPongServerHandler)(PingPong.stages)(system)
 
@@ -70,7 +70,7 @@ class RequestResponseSpec extends WordSpec with ShouldMatchers {
       val s = server(serverSystem)
       val c = client(clientSystem)
 
-      val num = 20000
+      val num = 50000
 
       for (i ← 0 to 10) {
         val mulActs = for (i ← 1 to num) yield c <~< PingPongMessageFormat("PING")

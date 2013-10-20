@@ -57,7 +57,11 @@ class Antenna[Cmd, Evt](init: Init[WithinActorContext, Cmd, Evt], decider: Actio
 
     handleTermination orElse {
       case x: Command.Ask[Cmd, Evt] ⇒
-        consumer ! Management.RegisterReply(x.terminator, x.includeTerminator, x.pp)
+        consumer ! x.registration
+        tcpHandler ! init.Command(x.payload)
+
+      case x: Command.AskStream[Cmd, Evt] ⇒
+        consumer ! x.registration
         tcpHandler ! init.Command(x.payload)
 
       case x: Command.Reply[Cmd] ⇒

@@ -1,55 +1,5 @@
 package nl.gideondk.sentinel.server
 
-// import java.net.InetSocketAddress
-
-// import akka.actor.{ Actor, ActorLogging, ActorRef, ActorSystem, Deploy, Props, actorRef2Scala }
-// import akka.io.{ BackpressureBuffer, PipelineContext, PipelineStage, Tcp }
-// import akka.io.Tcp.{ Bind, Bound, CommandFailed, Connected }
-// import akka.io.TcpPipelineHandler
-// import akka.io.TcpPipelineHandler.{ Init, WithinActorContext }
-// import akka.io.TcpReadWriteAdapter
-// import akka.util.ByteString
-
-// import scala.concurrent.Future
-
-// class SentinelServer[Cmd, Evt](port: Int, description: String, stages: ⇒ PipelineStage[PipelineContext, Cmd, ByteString, Evt, ByteString],
-//                                requestHandler: Init[WithinActorContext, Cmd, Evt] ⇒ ActorRef)(lowBytes: Long, highBytes: Long, maxBufferSize: Long) extends Actor with ActorLogging {
-//   import context.dispatcher
-
-//   val tcp = akka.io.IO(Tcp)(context.system)
-
-//   val address = new InetSocketAddress(port)
-
-//   override def preStart = {
-//     tcp ! Bind(self, address)
-//   }
-
-//   def receive = {
-//     case Bound ⇒
-//       log.debug(description + " bound to " + address)
-
-//     case CommandFailed(cmd) ⇒
-//       cmd match {
-//         case x: Bind ⇒
-//           log.error(description + " failed to bind to " + address)
-//       }
-
-//     case req @ Connected(remoteAddr, localAddr) ⇒
-//       val init =
-//         TcpPipelineHandler.withLogger(log,
-//           stages >>
-//             new TcpReadWriteAdapter >>
-//       new BackpressureBuffer(lowBytes, highBytes, maxBufferSize))
-
-//       val connection = sender
-//       val handler = requestHandler(init)
-//       val tcpHandler = context.actorOf(TcpPipelineHandler.props(init, connection, handler).withDeploy(Deploy.local))
-
-//       handler ! SentinelServerHandler.RegisterTcpHandler(tcpHandler)
-//       connection ! Tcp.Register(tcpHandler)
-//   }
-// }
-
 import nl.gideondk.sentinel.Action
 import akka.io.PipelineStage
 import akka.actor.ActorRef

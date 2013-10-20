@@ -29,13 +29,15 @@ import scalaz._
 import Scalaz._
 
 trait Client[Cmd, Evt] {
+  import Registration._
+
   def actor: ActorRef
 
   def <~<(command: Cmd)(implicit context: ExecutionContext): Task[Evt] = sendCommand(command)
 
   def sendCommand(command: Cmd)(implicit context: ExecutionContext): Task[Evt] = Task {
     val promise = Promise[Evt]()
-    actor ! Command.Ask(command, promise) // Terminate directly and always return terminator => single result
+    actor ! Command.Ask(command, ReplyRegistration(promise)) // Terminate directly and always return terminator => single result
     promise.future
   }
 
@@ -161,7 +163,7 @@ class ClientCore[Cmd, Evt](routerConfig: RouterConfig, description: String, reco
       coreRouter match {
         case Some(r) ⇒
           r forward x
-        case None ⇒ x.pp.failure(new Exception("No connection(s) available"))
+        case None ⇒ x.registration.promise.failure(new Exception("No connection(s) available"))
       }
 
     case _ ⇒
