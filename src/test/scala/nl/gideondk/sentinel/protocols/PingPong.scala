@@ -28,7 +28,7 @@ object PingPong {
   val stages = new PingPongMessageStage >> new LengthFieldFrame(1000)
 }
 
-object PingPongServerHandler extends Action.Decider[PingPongMessageFormat, PingPongMessageFormat] {
+object PingPongServerHandler extends Action.Resolver[PingPongMessageFormat, PingPongMessageFormat] {
   def process = {
     case PingPongMessageFormat("PING") ⇒
       answer {

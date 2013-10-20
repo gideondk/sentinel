@@ -1,21 +1,15 @@
 package nl.gideondk.sentinel
 
 import scala.collection.immutable.Queue
-import scala.concurrent.{ Future, Promise }
-import scala.util.{ Failure, Success }
-import akka.actor._
-import akka.io.BackpressureBuffer
-import akka.io.TcpPipelineHandler.{ Init, WithinActorContext }
-import scalaz.stream._
-import scalaz.stream.Process._
-import scala.util.Try
-import scala.concurrent.duration._
-import akka.pattern.ask
-import akka.util.Timeout
 
-import akka.actor.ActorSystem.Settings
 import com.typesafe.config.Config
+
+import akka.actor._
+import akka.actor.ActorSystem.Settings
 import akka.dispatch._
+
+import akka.io._
+import akka.io.TcpPipelineHandler.{ Init, WithinActorContext }
 
 class AntennaMailbox(settings: Settings, cfg: Config) extends UnboundedPriorityMailbox(
   PriorityGenerator {
@@ -25,14 +19,14 @@ class AntennaMailbox(settings: Settings, cfg: Config) extends UnboundedPriorityM
     case _                               ⇒ 10
   })
 
-class Antenna[Cmd, Evt](init: Init[WithinActorContext, Cmd, Evt], decider: Action.Decider[Evt, Cmd]) extends Actor with ActorLogging {
+class Antenna[Cmd, Evt](init: Init[WithinActorContext, Cmd, Evt], Resolver: SentinelResolver[Evt, Cmd]) extends Actor with ActorLogging {
   var commandQueue = Queue.empty[Cmd]
 
   def active(tcpHandler: ActorRef): Receive = {
-    val answerer = context.actorOf(Props(new Answerer(init)))
+    val responder = context.actorOf(Props(new Responder(init)))
     val consumer = context.actorOf(Props(new Consumer(init)))
 
-    context watch answerer
+    context watch responder
     context watch consumer
 
       def handleTermination: Receive = {
@@ -71,10 +65,11 @@ class Antenna[Cmd, Evt](init: Init[WithinActorContext, Cmd, Evt], decider: Actio
         tcpHandler ! init.Command(x.payload)
 
       case init.Event(data) ⇒ {
-        decider.process(data) match {
-          case x: Action.Reaction[Evt, Cmd] ⇒ answerer ! x
-          case Action.Consume               ⇒ consumer ! init.Event(data) // Pass through
-          case Action.Ignore                ⇒ ()
+        Resolver.process(data) match {
+          case x: ResponderAction.Reaction[Evt, Cmd] ⇒ responder ! x
+
+          case ConsumerAction.Consume                ⇒ consumer ! init.Event(data) // Pass through
+          case ConsumerAction.Ignore                 ⇒ ()
         }
       }
 

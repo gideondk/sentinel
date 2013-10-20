@@ -1,21 +1,9 @@
 package nl.gideondk.sentinel
 
-import scala.collection.immutable.Queue
 import scala.concurrent.{ Future, Promise }
-import scala.util.{ Failure, Success }
-import akka.actor._
-import akka.io.BackpressureBuffer
-import akka.io.TcpPipelineHandler.{ Init, WithinActorContext }
-import scalaz.stream._
-import scalaz.stream.Process._
 
-import scala.util.Try
-import scala.concurrent.duration._
-import akka.pattern.ask
-import akka.util.Timeout
-
-import scala.concurrent.Future
-import scalaz.contrib.std.scalaFuture._
+import akka.actor.ActorRef
+import scalaz.stream.Process
 
 trait Registration[Evt]
 
@@ -29,7 +17,12 @@ trait Command[Cmd]
 object Command {
   import Registration._
   case class Ask[Cmd, Evt](payload: Cmd, registration: ReplyRegistration[Evt]) extends Command[Cmd]
+  case class Tell[Cmd, Evt](payload: Cmd, registration: ReplyRegistration[Evt]) extends Command[Cmd]
+
   case class AskStream[Cmd, Evt](payload: Cmd, registration: StreamReplyRegistration[Evt]) extends Command[Cmd]
+  case class SendStream[Cmd, Evt](command: Cmd, stream: Process[Future, Cmd], registration: ReplyRegistration[Evt]) extends Command[Cmd]
+
+  case class Conversate[Cmd, Evt](command: Cmd, stream: Process[Future, Cmd], registration: StreamReplyRegistration[Evt]) extends Command[Cmd]
 
   case class Reply[Cmd](payload: Cmd) extends Command[Cmd]
   case class StreamReply[Cmd](payload: Cmd) extends Command[Cmd]

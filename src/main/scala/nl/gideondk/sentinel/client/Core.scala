@@ -1,73 +1,61 @@
 package nl.gideondk.sentinel.client
 
-import scala.collection.immutable.Queue
-import scala.concurrent.{ Future, Promise }
-import scala.util.{ Failure, Success }
+import java.net.InetSocketAddress
+
+import scala.concurrent._
+import scala.concurrent.duration.{ DurationInt, FiniteDuration }
+
 import akka.actor._
-import akka.io.BackpressureBuffer
-import akka.io.TcpPipelineHandler.{ Init, WithinActorContext }
-import scalaz.stream._
-import scalaz.stream.Process._
-import scala.util.Try
-import scala.concurrent.duration._
-import akka.pattern.ask
-import akka.util.Timeout
 import akka.io._
 import akka.io.Tcp._
-import akka.io.TcpPipelineHandler._
 import akka.routing._
+
 import akka.util.ByteString
-import java.net.InetSocketAddress
-import scala.concurrent.ExecutionContext
+
+import scala.collection.immutable.Queue
+import scalaz.stream._
+
 import nl.gideondk.sentinel._
-
-import scala.concurrent.Future
-import scalaz.contrib.std.scalaFuture._
-import nl.gideondk.sentinel.CatchableFuture._
-
-import scalaz._
-import Scalaz._
+import nl.gideondk.sentinel.Registration._
 
 trait Client[Cmd, Evt] {
   import Registration._
 
   def actor: ActorRef
 
-  def <~<(command: Cmd)(implicit context: ExecutionContext): Task[Evt] = sendCommand(command)
+  def <~<(command: Cmd)(implicit context: ExecutionContext): Task[Evt] = ask(command)
 
-  def sendCommand(command: Cmd)(implicit context: ExecutionContext): Task[Evt] = Task {
+  def ask(command: Cmd)(implicit context: ExecutionContext): Task[Evt] = Task {
     val promise = Promise[Evt]()
-    actor ! Command.Ask(command, ReplyRegistration(promise)) // Terminate directly and always return terminator => single result
+    actor ! Command.Ask(command, ReplyRegistration(promise))
     promise.future
   }
 
-  // def sendCommand(command: Cmd)(implicit context: ExecutionContext): Task[Evt] = Task {
-  //   val promise = Promise[Process[Future, Evt]]()
-  //   actor ! Command.Ask(command, (x: Evt) ⇒ true, true, promise) // Terminate directly and always return terminator => single result
-  //   promise.future.map { x ⇒
-  //     x pipe Process.await1 runLastOr (throw new Exception("Internal error"))
-  //   }.flatMap(x ⇒ x)
-  // }
+  def askStream(command: Cmd, terminator: Evt ⇒ Boolean, includeTerminator: Boolean)(implicit context: ExecutionContext): Task[Process[Future, Evt]] = Task {
+    val promise = Promise[Process[Future, Evt]]()
+    actor ! Command.AskStream(command, StreamReplyRegistration(terminator, includeTerminator, promise))
+    promise.future
+  }
 
-  //   def streamCommands(stream: Process[Task, Cmd]): Task[Evt] = Task {
-  //     val promise = Promise[Evt]()
-  //     actor ! UpStreamOperation[Cmd, Evt](stream, promise)
-  //     promise.future
-  //   }
+  // def sendStream(command: Cmd, source: Process[Future, Evt]): Task[Evt] = Task {
+  //   val promise = Promise[Evt]()
+  //   actor ! Command.AskStream(command, StreamReplyRegistration(terminator, includeTerminator, promise))
+  //   promise.future
+  // }
 }
 
 object Client {
   case class ConnectToServer(addr: InetSocketAddress)
 
-  def defaultDecider[Cmd, Evt] = new Action.Decider[Evt, Cmd] {
+  def defaultResolver[Cmd, Evt] = new SentinelResolver[Evt, Cmd] {
     def process = {
-      case _ ⇒ Action.Consume
+      case _ ⇒ ConsumerAction.Consume
     }
   }
 
   def apply[Cmd, Evt](serverHost: String, serverPort: Int, routerConfig: RouterConfig,
-                      description: String = "Sentinel Client", workerReconnectTime: FiniteDuration = 2 seconds, stages: ⇒ PipelineStage[PipelineContext, Cmd, ByteString, Evt, ByteString], decider: Action.Decider[Evt, Cmd] = Client.defaultDecider[Cmd, Evt], lowBytes: Long = 100L, highBytes: Long = 5000L, maxBufferSize: Long = 20000L)(implicit system: ActorSystem) = {
-    val core = system.actorOf(Props(new ClientCore[Cmd, Evt](routerConfig, description, workerReconnectTime, stages, decider)(lowBytes, highBytes, maxBufferSize)))
+                      description: String = "Sentinel Client", workerReconnectTime: FiniteDuration = 2 seconds, stages: ⇒ PipelineStage[PipelineContext, Cmd, ByteString, Evt, ByteString], Resolver: SentinelResolver[Evt, Cmd] = Client.defaultResolver[Cmd, Evt], lowBytes: Long = 100L, highBytes: Long = 5000L, maxBufferSize: Long = 20000L)(implicit system: ActorSystem) = {
+    val core = system.actorOf(Props(new ClientCore[Cmd, Evt](routerConfig, description, workerReconnectTime, stages, Resolver)(lowBytes, highBytes, maxBufferSize)))
     core ! Client.ConnectToServer(new InetSocketAddress(serverHost, serverPort))
     new Client[Cmd, Evt] {
       val actor = core
@@ -75,7 +63,7 @@ object Client {
   }
 }
 
-class ClientAntennaManager[Cmd, Evt](address: InetSocketAddress, stages: ⇒ PipelineStage[PipelineContext, Cmd, ByteString, Evt, ByteString], decider: Action.Decider[Evt, Cmd]) extends Actor with ActorLogging with Stash {
+class ClientAntennaManager[Cmd, Evt](address: InetSocketAddress, stages: ⇒ PipelineStage[PipelineContext, Cmd, ByteString, Evt, ByteString], Resolver: SentinelResolver[Evt, Cmd]) extends Actor with ActorLogging with Stash {
   val tcp = akka.io.IO(Tcp)(context.system)
   var receiverQueue = Queue.empty[ActorRef]
 
@@ -93,7 +81,7 @@ class ClientAntennaManager[Cmd, Evt](address: InetSocketAddress, stages: ⇒ Pip
           new TcpReadWriteAdapter >>
           new BackpressureBuffer(100, 50 * 1024L, 1000 * 1024L))
 
-      val antenna = context.actorOf(Props(new Antenna(init, decider)))
+      val antenna = context.actorOf(Props(new Antenna(init, Resolver)))
       val handler = context.actorOf(TcpPipelineHandler.props(init, sender, antenna).withDeploy(Deploy.local))
       context watch handler
 
@@ -116,7 +104,7 @@ class ClientAntennaManager[Cmd, Evt](address: InetSocketAddress, stages: ⇒ Pip
 }
 
 class ClientCore[Cmd, Evt](routerConfig: RouterConfig, description: String, reconnectDuration: FiniteDuration,
-                           stages: ⇒ PipelineStage[PipelineContext, Cmd, ByteString, Evt, ByteString], decider: Action.Decider[Evt, Cmd], workerDescription: String = "Sentinel Client Worker")(lowBytes: Long, highBytes: Long, maxBufferSize: Long) extends Actor with ActorLogging {
+                           stages: ⇒ PipelineStage[PipelineContext, Cmd, ByteString, Evt, ByteString], Resolver: SentinelResolver[Evt, Cmd], workerDescription: String = "Sentinel Client Worker")(lowBytes: Long, highBytes: Long, maxBufferSize: Long) extends Actor with ActorLogging {
 
   import context.dispatcher
 
@@ -129,7 +117,7 @@ class ClientCore[Cmd, Evt](routerConfig: RouterConfig, description: String, reco
   var coreRouter: Option[ActorRef] = None
 
   def antennaManagerProto(address: InetSocketAddress) =
-    new ClientAntennaManager(address, stages, decider)
+    new ClientAntennaManager(address, stages, Resolver)
 
   def routerProto(address: InetSocketAddress) =
     context.system.actorOf(Props(antennaManagerProto(address)).withRouter(routerConfig).withDispatcher("nl.gideondk.sentinel.sentinel-dispatcher"))

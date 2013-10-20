@@ -1,33 +1,22 @@
 package nl.gideondk.sentinel
 
 import scala.collection.immutable.Queue
-import scala.concurrent.{ Future, Promise }
+import scala.concurrent.{ ExecutionContext, Future, Promise }
+import scala.concurrent.duration.DurationInt
 import scala.util.{ Failure, Success }
+
 import akka.actor._
-import akka.io.BackpressureBuffer
 import akka.io.TcpPipelineHandler.{ Init, WithinActorContext }
-import scalaz.stream._
-import scalaz.stream.Process._
-import scala.util.Try
-import scala.concurrent.duration._
 import akka.pattern.ask
 import akka.util.Timeout
-import nl.gideondk.sentinel._
-import scala.concurrent.ExecutionContext
-import akka.dispatch._
-import scalaz._
-import Scalaz._
-import com.typesafe.config.Config
-import akka.actor.ActorSystem.Settings
 
-import scala.concurrent.Future
-import scalaz.contrib.std.scalaFuture._
-import nl.gideondk.sentinel.CatchableFuture._
+import scalaz.stream.Process
+import scalaz.stream.Process._
 
-import Action._
+import ResponderAction._
 
-object Answerer {
-  def answererSink[O](acquire: Future[ActorRef])(release: ActorRef ⇒ Future[Unit])(step: ActorRef ⇒ Future[O])(implicit context: ExecutionContext): Process[Future, O] = {
+object Responder {
+  def ResponderSink[O](acquire: Future[ActorRef])(release: ActorRef ⇒ Future[Unit])(step: ActorRef ⇒ Future[O])(implicit context: ExecutionContext): Process[Future, O] = {
       def go(step: Future[O], onExit: Process[Future, O]): Process[Future, O] =
         await[Future, O, O](step)(o ⇒ emit(o) ++ go(step, onExit), onExit, onExit)
 
@@ -52,8 +41,9 @@ object Answerer {
   case object DequeueResponse
 }
 
-class Answerer[Cmd, Evt](init: Init[WithinActorContext, Cmd, Evt], streamChunkTimeout: Timeout = Timeout(5 seconds)) extends Actor with ActorLogging with Stash {
-  import Answerer._
+class Responder[Cmd, Evt](init: Init[WithinActorContext, Cmd, Evt], streamChunkTimeout: Timeout = Timeout(5 seconds)) extends Actor with ActorLogging with Stash {
+  import Responder._
+  import ResponderAction._
   import context.dispatcher
 
   var responseQueue = Queue.empty[Promise[HandleResult]]
@@ -122,7 +112,7 @@ class Answerer[Cmd, Evt](init: Init[WithinActorContext, Cmd, Evt], streamChunkTi
     case x: HandleStreamResult[Cmd] ⇒
       val worker = self
       implicit val timeout = streamChunkTimeout
-      x.stream to answererSink((worker ? StartStreamHandling).map(x ⇒ worker))((a: ActorRef) ⇒ (a ? StreamProducerEnded).mapTo[Unit])((a: ActorRef) ⇒ Future { (c: Cmd) ⇒ (self ? StreamProducerChunk(c)).mapTo[Unit] })
+      x.stream to ResponderSink((worker ? StartStreamHandling).map(x ⇒ worker))((a: ActorRef) ⇒ (a ? StreamProducerEnded).mapTo[Unit])((a: ActorRef) ⇒ Future { (c: Cmd) ⇒ (self ? StreamProducerChunk(c)).mapTo[Unit] })
       context.become(handleRequestAndStreamResponse)
     case x: StreamProducerMessage ⇒
       log.error("Internal leakage in stream: received stream unexpected stream chunk")

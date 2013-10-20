@@ -1,30 +1,22 @@
 package nl.gideondk.sentinel
 
 import scala.collection.immutable.Queue
-import scala.concurrent.{ Future, Promise }
-import scala.util.{ Failure, Success }
+import scala.concurrent._
+import scala.concurrent.duration.DurationInt
+
+import com.typesafe.config.Config
+
 import akka.actor._
-import akka.io.BackpressureBuffer
+import akka.actor.ActorSystem.Settings
+import akka.dispatch._
 import akka.io.TcpPipelineHandler.{ Init, WithinActorContext }
-import scalaz.stream._
-import scalaz.stream.Process._
-import scala.util.Try
-import scala.concurrent.duration._
 import akka.pattern.ask
 import akka.util.Timeout
-import nl.gideondk.sentinel._
-import scala.concurrent.ExecutionContext
-import akka.dispatch._
-import scalaz._
-import Scalaz._
-import com.typesafe.config.Config
-import akka.actor.ActorSystem.Settings
 
-import scala.concurrent.Future
-import scalaz.contrib.std.scalaFuture._
-import nl.gideondk.sentinel.CatchableFuture._
+import scalaz.stream._
+import scalaz.stream.Process._
 
-import Action._
+import Registration._
 
 object Consumer {
   trait StreamConsumerMessage
