@@ -24,25 +24,43 @@ import scala.concurrent.Future
 import scalaz.contrib.std.scalaFuture._
 import nl.gideondk.sentinel.CatchableFuture._
 
-class Answerer[Cmd, Evt](init: Init[WithinActorContext, Cmd, Evt]) extends Actor with ActorLogging with Stash {
-  import context.dispatcher
+import Action._
+
+object Answerer {
+  def answererSink[O](acquire: Future[ActorRef])(release: ActorRef ⇒ Future[Unit])(step: ActorRef ⇒ Future[O])(implicit context: ExecutionContext): Process[Future, O] = {
+      def go(step: Future[O], onExit: Process[Future, O]): Process[Future, O] =
+        await[Future, O, O](step)(o ⇒ emit(o) ++ go(step, onExit), onExit, onExit)
+
+    await(acquire)(r ⇒ {
+      val onExit = eval(release(r)).drain
+      go(step(r), onExit)
+    }, halt, halt)
+  }
 
   trait HandleResult
-  case class HandleAsyncResult(response: Cmd) extends HandleResult
-  case class HandleStreamResult(response: Process[Future, Cmd]) extends HandleResult
+  case class HandleAsyncResult[Cmd](response: Cmd) extends HandleResult
+  case class HandleStreamResult[Cmd](stream: Process[Future, Cmd]) extends HandleResult
 
-  trait StreamChunk
-  case class StreamData[Cmd](c: Cmd) extends StreamChunk
-  case object StreamEnd extends StreamChunk
-  case object StreamChunkReceived
+  trait StreamProducerMessage
+  case class StreamProducerChunk[Cmd](c: Cmd) extends StreamProducerMessage
+
+  case object StartStreamHandling extends StreamProducerMessage
+  case object ReadyForStream extends StreamProducerMessage
+  case object StreamProducerEnded extends StreamProducerMessage
+  case object StreamProducerChunkReceived extends StreamProducerMessage
 
   case object DequeueResponse
+}
+
+class Answerer[Cmd, Evt](init: Init[WithinActorContext, Cmd, Evt], streamChunkTimeout: Timeout = Timeout(5 seconds)) extends Actor with ActorLogging with Stash {
+  import Answerer._
+  import context.dispatcher
 
   var responseQueue = Queue.empty[Promise[HandleResult]]
 
   def handleRequest: Receive = {
     case x: Answer[Evt, Cmd] ⇒
-      val serverWorker = self
+      val me = self
       val promise = Promise[HandleResult]()
       responseQueue :+= promise
 
@@ -50,7 +68,7 @@ class Answerer[Cmd, Evt](init: Init[WithinActorContext, Cmd, Evt]) extends Actor
         response ← x.future map (result ⇒ HandleAsyncResult(result))
       } yield {
         promise.success(response)
-        serverWorker ! DequeueResponse
+        me ! DequeueResponse
       }
 
       fut.onFailure {
@@ -59,7 +77,7 @@ class Answerer[Cmd, Evt](init: Init[WithinActorContext, Cmd, Evt]) extends Actor
           context.stop(self)
       }
     case x: ProduceStream[Evt, Cmd] ⇒
-      val serverWorker = self
+      val me = self
       val promise = Promise[HandleResult]()
       responseQueue :+= promise
 
@@ -67,7 +85,7 @@ class Answerer[Cmd, Evt](init: Init[WithinActorContext, Cmd, Evt]) extends Actor
         response ← x.futureProcess map (result ⇒ HandleStreamResult(result))
       } yield {
         promise.success(response)
-        serverWorker ! DequeueResponse
+        me ! DequeueResponse
       }
 
       fut.onFailure {
@@ -100,21 +118,25 @@ class Answerer[Cmd, Evt](init: Init[WithinActorContext, Cmd, Evt]) extends Actor
   }
 
   def handleRequestAndResponse: Receive = handleRequest orElse handleDequeue orElse {
-    case x: HandleAsyncResult ⇒ context.parent ! Command.Reply(x.response)
-    case x: HandleStreamResult ⇒
-      x.stream
+    case x: HandleAsyncResult[Cmd] ⇒ context.parent ! Command.Reply(x.response)
+    case x: HandleStreamResult[Cmd] ⇒
+      val worker = self
+      implicit val timeout = streamChunkTimeout
+      x.stream to answererSink((worker ? StartStreamHandling).map(x ⇒ worker))((a: ActorRef) ⇒ (a ? StreamProducerEnded).mapTo[Unit])((a: ActorRef) ⇒ Future { (c: Cmd) ⇒ (self ? StreamProducerChunk(c)).mapTo[Unit] })
       context.become(handleRequestAndStreamResponse)
-    case x: StreamChunk ⇒
+    case x: StreamProducerMessage ⇒
       log.error("Internal leakage in stream: received stream unexpected stream chunk")
       context.stop(self)
   }
 
   def handleRequestAndStreamResponse: Receive = handleRequest orElse handleDequeue orElse {
-    case StreamData(c) ⇒
-      sender ! StreamChunkReceived
-      context.parent ! Command.StreamReply(x.response)
-    case StreamEnd ⇒
-      sender ! StreamChunkReceived
+    case StartStreamHandling ⇒
+      sender ! ReadyForStream
+    case StreamProducerChunk(c) ⇒
+      sender ! StreamProducerChunkReceived
+      context.parent ! Command.StreamReply(c)
+    case StreamProducerEnded ⇒
+      sender ! StreamProducerChunkReceived
       context.become(handleRequestAndResponse)
     case _ ⇒ stash()
   }

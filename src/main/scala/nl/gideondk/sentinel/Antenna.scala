@@ -29,8 +29,8 @@ class Antenna[Cmd, Evt](init: Init[WithinActorContext, Cmd, Evt], decider: Actio
   var commandQueue = Queue.empty[Cmd]
 
   def active(tcpHandler: ActorRef): Receive = {
-    val answerer = context.actorOf(Props(new RxProcessors.Answerer(init)))
-    val consumer = context.actorOf(Props(new RxProcessors.Consumer(init)))
+    val answerer = context.actorOf(Props(new Answerer(init)))
+    val consumer = context.actorOf(Props(new Consumer(init)))
 
     context watch answerer
     context watch consumer

@@ -24,16 +24,23 @@ import scala.concurrent.Future
 import scalaz.contrib.std.scalaFuture._
 import nl.gideondk.sentinel.CatchableFuture._
 
-trait InternalConsumerMessage
+import Action._
 
-class ConsumerMailbox(settings: Settings, cfg: Config) extends UnboundedPriorityMailbox(
-  PriorityGenerator {
-    case x: InternalConsumerMessage      ⇒ 0
-    case x: Management.ManagementMessage ⇒ 1
-    case _                               ⇒ 10
-  })
+object Consumer {
+  trait StreamConsumerMessage
 
-  import Action._
+  case object ReadyForStream extends StreamConsumerMessage
+  case object StartingWithStream extends StreamConsumerMessage
+  case object AskNextChunk extends StreamConsumerMessage
+  case object RegisterStreamConsumer extends StreamConsumerMessage
+  case object ReleaseStreamConsumer extends StreamConsumerMessage
+
+  class ConsumerMailbox(settings: Settings, cfg: Config) extends UnboundedPriorityMailbox(
+    PriorityGenerator {
+      case x: StreamConsumerMessage        ⇒ 0
+      case x: Management.ManagementMessage ⇒ 1
+      case _                               ⇒ 10
+    })
 
   def consumerResource[O](acquire: Future[ActorRef])(release: ActorRef ⇒ Future[Unit])(step: ActorRef ⇒ Future[O])(terminator: O ⇒ Boolean, includeTerminator: Boolean)(implicit context: ExecutionContext): Process[Future, O] = {
       def go(step: Future[O], onExit: Process[Future, O]): Process[Future, O] =
@@ -55,81 +62,81 @@ class ConsumerMailbox(settings: Settings, cfg: Config) extends UnboundedPriority
       go(step(r), onExit)
     }, halt, halt)
   }
+}
 
-  class Consumer[Cmd, Evt](init: Init[WithinActorContext, Cmd, Evt]) extends Actor with ActorLogging {
-    import Registration._
+class Consumer[Cmd, Evt](init: Init[WithinActorContext, Cmd, Evt], streamChunkTimeout: Timeout = Timeout(5 seconds)) extends Actor with ActorLogging {
+  import Registration._
+  import Consumer._
 
-    import context.dispatcher
+  import context.dispatcher
 
-    var hooks = Queue[Promise[Evt]]()
-    var buffer = Queue[Promise[Evt]]()
+  var hooks = Queue[Promise[Evt]]()
+  var buffer = Queue[Promise[Evt]]()
 
-    var registrations = Queue[Registration[Evt]]()
-    var currentPromise: Option[Promise[Evt]] = None
+  var registrations = Queue[Registration[Evt]]()
+  var currentPromise: Option[Promise[Evt]] = None
 
-    var runningSource: Option[Process[Future, Evt]] = None
+  var runningSource: Option[Process[Future, Evt]] = None
 
-    case object AskNextChunk extends InternalConsumerMessage
-    case object RegisterSource extends InternalConsumerMessage
-    case object ReleaseSource extends InternalConsumerMessage
+  def popAndSetHook = {
+    val worker = self
+    val registration = registrations.head
+    registrations = registrations.tail
 
-    implicit val timeout = Timeout(5 seconds)
+    implicit val timeout = streamChunkTimeout
 
-    def popAndSetHook = {
-      val me = self
-      val registration = registrations.head
-      registrations = registrations.tail
+    registration match {
+      case x: ReplyRegistration[Evt] ⇒ x.promise.completeWith((self ? AskNextChunk).mapTo[Promise[Evt]].flatMap(_.future))
+      case x: StreamReplyRegistration[Evt] ⇒
+        val resource = consumerResource((worker ? RegisterStreamConsumer).map(x ⇒ worker))((x: ActorRef) ⇒ (x ? ReleaseStreamConsumer).mapTo[Unit])((x: ActorRef) ⇒
+          (x ? AskNextChunk).mapTo[Promise[Evt]].flatMap(_.future))(x.terminator, x.includeTerminator)
 
-      registration match {
-        case x: ReplyRegistration[Evt] ⇒ x.promise.completeWith((self ? AskNextChunk).mapTo[Promise[Evt]].flatMap(_.future))
-        case x: StreamReplyRegistration[Evt] ⇒
-          val resource = consumerResource((me ? RegisterSource).map(x ⇒ self))((x: ActorRef) ⇒ (x ? ReleaseSource).mapTo[Unit])((x: ActorRef) ⇒
-            (x ? AskNextChunk).mapTo[Promise[Evt]].flatMap(_.future))(x.terminator, x.includeTerminator)
+        runningSource = Some(resource)
+        x.promise success resource
+    }
+  }
 
-          runningSource = Some(resource)
-          x.promise success resource
+  def handleRegistrations: Receive = {
+    case rc: Registration[Evt] ⇒
+      registrations :+= rc
+      if (runningSource.isEmpty && currentPromise.isEmpty) popAndSetHook
+  }
+
+  var behavior: Receive = handleRegistrations orElse {
+    case ReadyForStream ⇒
+      sender ! StartingWithStream
+
+    case ReleaseStreamConsumer ⇒
+      runningSource = None
+      if (hooks.headOption.isDefined) popAndSetHook
+      sender ! ()
+
+    case AskNextChunk ⇒
+      val promise = buffer.headOption match {
+        case Some(p) ⇒
+          buffer = buffer.tail
+          p
+        case None ⇒
+          val p = Promise[Evt]()
+          hooks :+= p
+          p
       }
-    }
+      sender ! promise
 
-    var behavior: Receive = {
-      case RegisterSource ⇒
-        sender ! self
+    case init.Event(data) ⇒
+      hooks.headOption match {
+        case Some(x) ⇒
+          x.success(data)
+          hooks = hooks.tail
+        case None ⇒
+          buffer :+= Promise.successful(data)
+      }
 
-      case ReleaseSource ⇒
-        runningSource = None
-        if (hooks.headOption.isDefined) popAndSetHook
-        sender ! ()
+  }
 
-      case AskNextChunk ⇒
-        val promise = buffer.headOption match {
-          case Some(p) ⇒
-            buffer = buffer.tail
-            p
-          case None ⇒
-            val p = Promise[Evt]()
-            hooks :+= p
-            p
-        }
-        sender ! promise
+  override def postStop() = {
+    hooks.foreach(_.failure(new Exception("Actor quit unexpectedly")))
+  }
 
-      case rc: Registration[Evt] ⇒
-        registrations :+= rc
-        if (runningSource.isEmpty && currentPromise.isEmpty) popAndSetHook
-
-      case init.Event(data) ⇒
-        hooks.headOption match {
-          case Some(x) ⇒
-            x.success(data)
-            hooks = hooks.tail
-          case None ⇒
-            buffer :+= Promise.successful(data)
-        }
-
-    }
-
-    override def postStop() = {
-      hooks.foreach(_.failure(new Exception("Actor quit unexpectedly")))
-    }
-
-    def receive = behavior
+  def receive = behavior
 }
