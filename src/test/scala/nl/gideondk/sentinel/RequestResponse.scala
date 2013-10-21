@@ -39,9 +39,9 @@ class RequestResponseSpec extends WordSpec with ShouldMatchers {
 
   //def worker(implicit system: ActorSystem) = system.actorOf(Props(new SentinelClientWorker(new InetSocketAddress("localhost", 9999), PingPong.stages, "Worker")(1, 1, 10)).withDispatcher("nl.gideondk.sentinel.sentinel-dispatcher"))
 
-  def client(implicit system: ActorSystem) = Client("localhost", 9999, RandomRouter(16), "Worker", 5 seconds, SimpleMessage.stages)(system)
+  def client(portNumber: Int)(implicit system: ActorSystem) = Client("localhost", portNumber, RandomRouter(16), "Worker", 5 seconds, SimpleMessage.stages)(system)
 
-  def server(implicit system: ActorSystem) = SentinelServer(9999, SimpleServerHandler)(SimpleMessage.stages)(system)
+  def server(portNumber: Int)(implicit system: ActorSystem) = SentinelServer(portNumber, SimpleServerHandler)(SimpleMessage.stages)(system)
 
   "A client" should {
     //    "return a exception when a request is done when no connection is available" in new TestKitSpec {
@@ -52,17 +52,19 @@ class RequestResponseSpec extends WordSpec with ShouldMatchers {
     //      evaluating { result.get } should produce[SentinelClientWorker.NoConnectionAvailable]
     //    }
 
-    // "be able to request a response from a server" in new TestKitSpec {
-    //   val s = server
-    //   val c = client
+    "be able to request a response from a server" in new TestKitSpec {
+      val portNumber = TestHelpers.portNumber.getAndIncrement()
+      val s = server(portNumber)
+      val c = client(portNumber)
 
-    //   val action = c <~< SimpleCommand(PING_PONG_COMMAND, "")
-    //   action.run.isSuccess
-    // }
+      val action = c <~< SimpleCommand(PING_PONG_COMMAND, "")
+      action.run.isSuccess
+    }
 
     "be able to stream requests to a server" in new TestKitSpec {
-      val s = server
-      val c = client
+      val portNumber = TestHelpers.portNumber.getAndIncrement()
+      val s = server(portNumber)
+      val c = client(portNumber)
 
       val chunks = List.fill(5)(SimpleStreamChunk("ABCDE"))
       val action = c <<?~~< (SimpleCommand(TOTAL_CHUNK_SIZE, ""), Process.emitRange(0, 500) |> process1.lift(x ⇒ SimpleStreamChunk("ABCDE")) onComplete (Process.emit(SimpleStreamChunk(""))))

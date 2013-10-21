@@ -25,6 +25,8 @@ import akka.testkit._
 import scala.concurrent.duration._
 import scala.concurrent._
 
+import java.util.concurrent.atomic.AtomicInteger
+
 import protocols._
 
 import java.net.InetSocketAddress
@@ -34,7 +36,13 @@ abstract class TestKitSpec extends TestKit(ActorSystem())
     with ShouldMatchers
     with BeforeAndAfterAll
     with ImplicitSender {
-  override def afterAll = system.shutdown()
+  override def afterAll = {
+    system.shutdown()
+  }
+}
+
+object TestHelpers {
+  val portNumber = new AtomicInteger(10500)
 }
 
 object BenchmarkHelpers {
