@@ -25,6 +25,12 @@ trait Client[Cmd, Evt] {
 
   def <~<(command: Cmd)(implicit context: ExecutionContext): Task[Evt] = ask(command)
 
+  def <~~?>>(command: Cmd)(implicit context: ExecutionContext): Task[Process[Future, Evt]] = askStream(command)
+
+  def <<?~~<(command: Cmd, source: Process[Future, Evt])(implicit context: ExecutionContext): Task[Evt] = sendStream(command, source)
+
+  def <<?~~?>>(command: Cmd)(implicit context: ExecutionContext): Task[scalaz.stream.Channel[Future, Cmd, Evt]] = conversate(command)
+
   def ask(command: Cmd)(implicit context: ExecutionContext): Task[Evt] = Task {
     val promise = Promise[Evt]()
     actor ! Command.Ask(command, ReplyRegistration(promise))
@@ -43,11 +49,11 @@ trait Client[Cmd, Evt] {
     promise.future
   }
 
-  // def conversate(command: Cmd): Task[Channel[Future, Cmd, Evt]] = Task {
-  //   val promise = Promise[Process[Future, Evt]]()
-  //   actor ! Command.Conversate(command, source, StreamReplyRegistration(terminator, includeTerminator, promise))
-  //   promise.future
-  // }
+  def conversate(command: Cmd): Task[scalaz.stream.Channel[Future, Cmd, Evt]] = Task {
+    val promise = Promise[scalaz.stream.Channel[Future, Cmd, Evt]]()
+    actor ! Command.Conversate(command, StreamReplyRegistration(promise))
+    promise.future
+  }
 }
 
 object Client {
@@ -55,7 +61,7 @@ object Client {
 
   def defaultResolver[Cmd, Evt] = new SentinelResolver[Evt, Cmd] {
     def process = {
-      case _ ⇒ ConsumerAction.Consume
+      case _ ⇒ ReceiverAction.Consume
     }
   }
 
@@ -71,12 +77,11 @@ object Client {
 
 class ClientAntennaManager[Cmd, Evt](address: InetSocketAddress, stages: ⇒ PipelineStage[PipelineContext, Cmd, ByteString, Evt, ByteString], Resolver: SentinelResolver[Evt, Cmd]) extends Actor with ActorLogging with Stash {
   val tcp = akka.io.IO(Tcp)(context.system)
-  var receiverQueue = Queue.empty[ActorRef]
 
   override def preStart = tcp ! Tcp.Connect(address)
 
   def connected(antenna: ActorRef): Receive = {
-    case x: Command.Ask[Cmd, Evt] ⇒
+    case x: nl.gideondk.sentinel.Command[Cmd, Evt] ⇒
       antenna forward x
   }
 
@@ -87,7 +92,7 @@ class ClientAntennaManager[Cmd, Evt](address: InetSocketAddress, stages: ⇒ Pip
           new TcpReadWriteAdapter >>
           new BackpressureBuffer(100, 50 * 1024L, 1000 * 1024L))
 
-      val antenna = context.actorOf(Props(new Antenna(init, Resolver)))
+      val antenna = context.actorOf(Props(new Antenna(init, Resolver)).withDispatcher("nl.gideondk.sentinel.sentinel-dispatcher"))
       val handler = context.actorOf(TcpPipelineHandler.props(init, sender, antenna).withDeploy(Deploy.local))
       context watch handler
 
@@ -153,7 +158,7 @@ class ClientCore[Cmd, Evt](routerConfig: RouterConfig, description: String, reco
         case None ⇒
       }
 
-    case x: Command.Ask[Cmd, Evt] ⇒
+    case x: nl.gideondk.sentinel.Command[Cmd, Evt] ⇒
       coreRouter match {
         case Some(r) ⇒
           r forward x

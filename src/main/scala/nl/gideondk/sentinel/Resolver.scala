@@ -4,23 +4,27 @@ import scala.concurrent.Future
 
 import scalaz.stream._
 
-import ConsumerAction._
-import ResponderAction._
+import ReceiverAction._
+import TransmitterAction._
 
 trait Resolver[Evt, Cmd]
 
 trait ConsumeResolver[Evt, Cmd] extends Resolver[Evt, Cmd] {
-  import ConsumerAction._
+  import ReceiverAction._
 
   def consume = Consume
+
+  def endStream = EndStream
+
+  def consumeAndEndStream = ConsumeAndEndStream
 
   def ignore = Ignore
 }
 
 trait ResponseResolver[Evt, Cmd] extends Resolver[Evt, Cmd] {
-  import ResponderAction._
+  import TransmitterAction._
 
-  def answer(f: Evt ⇒ Future[Cmd]): Answer[Evt, Cmd] = Answer(f)
+  def answer(f: Evt ⇒ Future[Cmd]): Signal[Evt, Cmd] = Signal(f)
 
   def handle(f: Evt ⇒ Unit): Handle[Evt, Cmd] = Handle(f)
 

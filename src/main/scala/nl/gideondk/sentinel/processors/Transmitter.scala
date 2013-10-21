@@ -18,7 +18,7 @@ import scalaz.stream.Process._
 import nl.gideondk.sentinel._
 import CatchableFuture._
 
-object Responder {
+object Transmitter {
   trait HandleResult
   case class HandleAsyncResult[Cmd](response: Cmd) extends HandleResult
   case class HandleStreamResult[Cmd](stream: Process[Future, Cmd]) extends HandleResult
@@ -34,17 +34,17 @@ object Responder {
   case object DequeueResponse
 }
 
-class Responder[Cmd, Evt](init: Init[WithinActorContext, Cmd, Evt], streamChunkTimeout: Timeout = Timeout(5 seconds)) extends Actor with ActorLogging with Stash {
-  import Responder._
-  import ResponderAction._
+class Transmitter[Cmd, Evt](init: Init[WithinActorContext, Cmd, Evt], streamChunkTimeout: Timeout = Timeout(5 seconds)) extends Actor with ActorLogging with Stash {
+  import Transmitter._
+  import TransmitterAction._
   import context.dispatcher
 
   var responseQueue = Queue.empty[Promise[HandleResult]]
 
-  def processAction(data: Evt, action: ResponderAction[Evt, Cmd]) = {
+  def processAction(data: Evt, action: TransmitterAction[Evt, Cmd]) = {
     val worker = self
     val future = action match {
-      case x: Answer[Evt, Cmd] ⇒
+      case x: Signal[Evt, Cmd] ⇒
         val promise = Promise[HandleResult]()
         responseQueue :+= promise
 
@@ -105,7 +105,7 @@ class Responder[Cmd, Evt](init: Init[WithinActorContext, Cmd, Evt], streamChunkT
   }
 
   def handleRequest: Receive = {
-    case x: ResponderActionAndData[Evt, Cmd] ⇒
+    case x: TransmitterActionAndData[Evt, Cmd] ⇒
       processAction(x.data, x.action)
   }
 
@@ -136,7 +136,7 @@ class Responder[Cmd, Evt](init: Init[WithinActorContext, Cmd, Evt], streamChunkT
     case x: HandleStreamResult[Cmd] ⇒
       val worker = self
       implicit val timeout = streamChunkTimeout
-      val s = x.stream to actorResource((worker ? StartStreamHandling).map(x ⇒ worker))((a: ActorRef) ⇒ (a ? StreamProducerEnded).mapTo[Unit])((a: ActorRef) ⇒ Future { (c: Cmd) ⇒ (self ? StreamProducerChunk(c)).mapTo[Unit] })
+      val s = x.stream to actorResource((worker ? StartStreamHandling).map(x ⇒ worker))((a: ActorRef) ⇒ (a ? StreamProducerEnded).map(x ⇒ ()))((a: ActorRef) ⇒ Future { (c: Cmd) ⇒ (self ? StreamProducerChunk(c)).map(x ⇒ ()) })
       s.run
       context.become(handleRequestAndStreamResponse)
     case x: StreamProducerMessage ⇒
@@ -153,6 +153,7 @@ class Responder[Cmd, Evt](init: Init[WithinActorContext, Cmd, Evt], streamChunkT
     case StreamProducerEnded ⇒
       sender ! StreamProducerChunkReceived
       context.become(handleRequestAndResponse)
+      unstashAll()
     case _ ⇒ stash()
   }
 

@@ -6,14 +6,14 @@ import scalaz.stream._
 
 trait Action
 
-trait ResponderAction[Evt, Cmd] extends Action
-trait ConsumerAction extends Action
+trait TransmitterAction[Evt, Cmd] extends Action
+trait ReceiverAction extends Action
 
-object ResponderAction {
-  trait Reaction[Evt, Cmd] extends ResponderAction[Evt, Cmd]
+object TransmitterAction {
+  trait Reaction[Evt, Cmd] extends TransmitterAction[Evt, Cmd]
   trait StreamReaction[Evt, Cmd] extends Reaction[Evt, Cmd]
 
-  case class Answer[Evt, Cmd](f: Evt ⇒ Future[Cmd]) extends Reaction[Evt, Cmd]
+  case class Signal[Evt, Cmd](f: Evt ⇒ Future[Cmd]) extends Reaction[Evt, Cmd]
   case class Handle[Evt, Cmd](f: Evt ⇒ Unit) extends Reaction[Evt, Cmd] // Same as answer, but don't send back response (cast)
 
   case class ProduceStream[Evt, Cmd](f: Evt ⇒ Future[Process[Future, Cmd]]) extends StreamReaction[Evt, Cmd]
@@ -21,14 +21,14 @@ object ResponderAction {
   case class ReactToStream[Evt, Cmd](f: Evt ⇒ Future[Channel[Future, Evt, Cmd]]) extends StreamReaction[Evt, Cmd]
 }
 
-case class ResponderActionAndData[Evt, Cmd](action: ResponderAction[Evt, Cmd], data: Evt)
+case class TransmitterActionAndData[Evt, Cmd](action: TransmitterAction[Evt, Cmd], data: Evt)
 
-object ConsumerAction {
-  case object Consume extends ConsumerAction
-  case object EndStream extends ConsumerAction
-  case object ConsumeAndEndStream extends ConsumerAction
+object ReceiverAction {
+  case object Consume extends ReceiverAction
+  case object EndStream extends ReceiverAction
+  case object ConsumeAndEndStream extends ReceiverAction
 
-  case object Ignore extends ConsumerAction
+  case object Ignore extends ReceiverAction
 }
 
-case class ConsumerActionAndData[Evt](action: ConsumerAction, data: Evt)
+case class ReceiverActionAndData[Evt](action: ReceiverAction, data: Evt)

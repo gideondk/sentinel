@@ -20,6 +20,8 @@ import client._
 import scalaz._
 import Scalaz._
 
+import scalaz.stream._
+
 import akka.actor._
 import akka.routing._
 import akka.testkit._
@@ -31,13 +33,15 @@ import protocols._
 import java.net.InetSocketAddress
 
 class RequestResponseSpec extends WordSpec with ShouldMatchers {
+  import SimpleMessage._
+
   implicit val duration = Duration(5, SECONDS)
 
   //def worker(implicit system: ActorSystem) = system.actorOf(Props(new SentinelClientWorker(new InetSocketAddress("localhost", 9999), PingPong.stages, "Worker")(1, 1, 10)).withDispatcher("nl.gideondk.sentinel.sentinel-dispatcher"))
 
-  def client(implicit system: ActorSystem) = Client("localhost", 9999, RandomRouter(16), "Worker", 5 seconds, PingPong.stages)(system)
+  def client(implicit system: ActorSystem) = Client("localhost", 9999, RandomRouter(16), "Worker", 5 seconds, SimpleMessage.stages)(system)
 
-  def server(implicit system: ActorSystem) = SentinelServer(9999, PingPongServerHandler)(PingPong.stages)(system)
+  def server(implicit system: ActorSystem) = SentinelServer(9999, SimpleServerHandler)(SimpleMessage.stages)(system)
 
   "A client" should {
     //    "return a exception when a request is done when no connection is available" in new TestKitSpec {
@@ -48,46 +52,50 @@ class RequestResponseSpec extends WordSpec with ShouldMatchers {
     //      evaluating { result.get } should produce[SentinelClientWorker.NoConnectionAvailable]
     //    }
 
-    //    "be able to request a response from a server" in new TestKitSpec {
-    //      val s = server
-    //      val c = client
-    //
-    //      val action = c <~< PingPongMessageFormat("PING")
-    //      action.run.isSuccess
-    //    }
+    // "be able to request a response from a server" in new TestKitSpec {
+    //   val s = server
+    //   val c = client
 
-    //    "be able to stream multiple requests to a server" in new TestKitSpec {
-    //      val s = server
-    //      val c = client
-    //      
-    //      
-    //    }
+    //   val action = c <~< SimpleCommand(PING_PONG_COMMAND, "")
+    //   action.run.isSuccess
+    // }
 
-    "be able to ping to the server in timely fashion" in new TestKitSpec {
-      val serverSystem = akka.actor.ActorSystem("ping-server-system")
-      val clientSystem = akka.actor.ActorSystem("ping-client-system")
+    "be able to stream requests to a server" in new TestKitSpec {
+      val s = server
+      val c = client
 
-      val s = server(serverSystem)
-      val c = client(clientSystem)
+      val chunks = List.fill(5)(SimpleStreamChunk("ABCDE"))
+      val action = c <<?~~< (SimpleCommand(TOTAL_CHUNK_SIZE, ""), Process.emitRange(0, 500) |> process1.lift(x ⇒ SimpleStreamChunk("ABCDE")) onComplete (Process.emit(SimpleStreamChunk(""))))
 
-      val num = 50000
-
-      for (i ← 0 to 10) {
-        val mulActs = for (i ← 1 to num) yield c <~< PingPongMessageFormat("PING")
-        val tasks = Task.sequenceSuccesses(mulActs.toList)
-
-        val fut = tasks.start
-        BenchmarkHelpers.timed("Ping-Ponging " + num + " requests", num) {
-          val res = Await.result(fut, Duration.apply(10, scala.concurrent.duration.SECONDS))
-          if (res.get.length != num) throw new Exception("Internal benchmark error")
-          true
-        }
-
-        val res = Await.result(fut, Duration.apply(10, scala.concurrent.duration.SECONDS))
-        res.get.filterNot(_ == PingPongMessageFormat("PONG")).length == 0
-      }
-
+      val localLength = chunks.foldLeft(0)((b, a) ⇒ b + a.payload.length)
+      action.run.isSuccess && action.run.toOption.get.payload.toInt == localLength
     }
+
+    // "be able to ping to the server in timely fashion" in new TestKitSpec {
+    //   val serverSystem = akka.actor.ActorSystem("ping-server-system")
+    //   val clientSystem = akka.actor.ActorSystem("ping-client-system")
+
+    //   val s = server(serverSystem)
+    //   val c = client(clientSystem)
+
+    //   val num = 50000
+
+    //   for (i ← 0 to 10) {
+    //     val mulActs = for (i ← 1 to num) yield c <~< PingPongMessageFormat("PING")
+    //     val tasks = Task.sequenceSuccesses(mulActs.toList)
+
+    //     val fut = tasks.start
+    //     BenchmarkHelpers.timed("Ping-Ponging " + num + " requests", num) {
+    //       val res = Await.result(fut, Duration.apply(10, scala.concurrent.duration.SECONDS))
+    //       if (res.get.length != num) throw new Exception("Internal benchmark error")
+    //       true
+    //     }
+
+    //     val res = Await.result(fut, Duration.apply(10, scala.concurrent.duration.SECONDS))
+    //     res.get.filterNot(_ == PingPongMessageFormat("PONG")).length == 0
+    //   }
+
+    // }
   }
 }
 
@@ -115,7 +123,7 @@ val promise = Promise[Evt]()
 //   val stages = new PingPongMessageStage >> new LengthFieldFrame(1000)
 
 //   val serverSystem = ActorSystem("ping-server-system")
-//   val pingServer = SentinelServer.sync(8000, PingPongServerHandler.handle, "Ping Server")(stages)(serverSystem)
+//   val pingServer = SentinelServer.sync(8000, SimpleServerHandler.handle, "Ping Server")(stages)(serverSystem)
 
 //   val clientSystem = ActorSystem("ping-client-system")
 //   val pingClient = SentinelClient.randomRouting("localhost", 8000, 32, "Ping Client")(stages)(clientSystem)

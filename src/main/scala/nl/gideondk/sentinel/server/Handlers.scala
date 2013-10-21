@@ -39,7 +39,7 @@ class ServerCore[Cmd, Evt](port: Int, description: String, stages: ⇒ PipelineS
             new BackpressureBuffer(lowBytes, highBytes, maxBufferSize))
 
       val connection = sender
-      val antenna = context.actorOf(Props(new Antenna(init, resolver)))
+      val antenna = context.actorOf(Props(new Antenna(init, resolver)).withDispatcher("nl.gideondk.sentinel.sentinel-dispatcher"))
       val tcpHandler = context.actorOf(TcpPipelineHandler.props(init, connection, antenna).withDeploy(Deploy.local))
 
       antenna ! Management.RegisterTcpHandler(tcpHandler)
