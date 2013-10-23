@@ -70,9 +70,19 @@ object SimpleMessage {
   val GENERATE_NUMBERS = 3
 }
 
-object SimpleServerHandler extends SentinelResolver[SimpleMessageFormat, SimpleMessageFormat] {
-  import SimpleMessage._
+import SimpleMessage._
+trait DefaultSimpleMessageHandler extends SentinelResolver[SimpleMessageFormat, SimpleMessageFormat] {
   def process = {
+    case SimpleStreamChunk(x) ⇒ if (x.length > 0) consumeStreamChunk else endStream
+    case x: SimpleReply       ⇒ ReceiverAction.AcceptSignal
+  }
+}
+
+object SimpleClientHandler extends DefaultSimpleMessageHandler
+
+object SimpleServerHandler extends DefaultSimpleMessageHandler {
+
+  override def process = super.process orElse {
     case SimpleCommand(PING_PONG_COMMAND, payload) ⇒ answer { x ⇒ Future(SimpleReply("PONG")) }
     case SimpleCommand(TOTAL_CHUNK_SIZE, payload) ⇒ consumeStream { x ⇒
       s ⇒
@@ -80,11 +90,7 @@ object SimpleServerHandler extends SentinelResolver[SimpleMessageFormat, SimpleM
     }
     case SimpleCommand(GENERATE_NUMBERS, payload) ⇒ produceStream { x ⇒
       val count = payload.toInt
-      Future(Process.emitRange(0, count) |> process1.lift(x ⇒ SimpleReply(x.toString)))
+      Future((Process.emitRange(0, count) |> process1.lift(x ⇒ SimpleReply(x.toString))) onComplete (Process.emit(SimpleStreamChunk(""))))
     }
-
-    case SimpleStreamChunk(x) ⇒ if (x.length > 0) consumeStreamChunk else endStream
-
-    case _                    ⇒ throw new Exception("Unknown command")
   }
 }

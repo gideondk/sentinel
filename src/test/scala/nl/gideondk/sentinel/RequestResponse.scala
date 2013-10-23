@@ -30,6 +30,11 @@ import scala.concurrent._
 
 import protocols._
 
+import scalaz.contrib.std.scalaFuture.futureInstance
+
+import nl.gideondk.sentinel._
+import CatchableFuture._
+
 import java.net.InetSocketAddress
 
 class RequestResponseSpec extends WordSpec with ShouldMatchers {
@@ -39,7 +44,7 @@ class RequestResponseSpec extends WordSpec with ShouldMatchers {
 
   //def worker(implicit system: ActorSystem) = system.actorOf(Props(new SentinelClientWorker(new InetSocketAddress("localhost", 9999), PingPong.stages, "Worker")(1, 1, 10)).withDispatcher("nl.gideondk.sentinel.sentinel-dispatcher"))
 
-  def client(portNumber: Int)(implicit system: ActorSystem) = Client("localhost", portNumber, RandomRouter(16), "Worker", 5 seconds, SimpleMessage.stages)(system)
+  def client(portNumber: Int)(implicit system: ActorSystem) = Client("localhost", portNumber, RandomRouter(16), "Worker", 5 seconds, SimpleMessage.stages, SimpleClientHandler)(system)
 
   def server(portNumber: Int)(implicit system: ActorSystem) = SentinelServer(portNumber, SimpleServerHandler)(SimpleMessage.stages)(system)
 
@@ -61,16 +66,30 @@ class RequestResponseSpec extends WordSpec with ShouldMatchers {
       action.run.isSuccess
     }
 
-    "be able to stream requests to a server" in new TestKitSpec {
+    "be able to send a stream to a server" in new TestKitSpec {
       val portNumber = TestHelpers.portNumber.getAndIncrement()
       val s = server(portNumber)
       val c = client(portNumber)
 
-      val chunks = List.fill(5)(SimpleStreamChunk("ABCDE"))
-      val action = c <<?~~< (SimpleCommand(TOTAL_CHUNK_SIZE, ""), Process.emitRange(0, 500) |> process1.lift(x ⇒ SimpleStreamChunk("ABCDEF")) onComplete (Process.emit(SimpleStreamChunk(""))))
+      val count = 500
+      val chunks = List.fill(count)(SimpleStreamChunk("ABCDEF"))
+      val action = c <<?~~< (SimpleCommand(TOTAL_CHUNK_SIZE, ""), Process.emitRange(0, count) |> process1.lift(x ⇒ SimpleStreamChunk("ABCDEF")) onComplete (Process.emit(SimpleStreamChunk(""))))
 
       val localLength = chunks.foldLeft(0)((b, a) ⇒ b + a.payload.length)
       action.run.isSuccess && action.run.toOption.get.payload.toInt == localLength
+    }
+
+    "be able to receive streams from a server" in new TestKitSpec {
+      val portNumber = TestHelpers.portNumber.getAndIncrement()
+      val s = server(portNumber)
+      val c = client(portNumber)
+
+      val count = 500
+      val action = c <~~?>> SimpleCommand(GENERATE_NUMBERS, count.toString)
+
+      val stream = action.copoint
+      val result = Await.result(stream.chunkAll.runLastOr(throw new Exception("Problems occured during stream handling")), 5 seconds)
+      result.length == count
     }
 
     // "be able to ping to the server in timely fashion" in new TestKitSpec {

@@ -71,8 +71,8 @@ object Client {
   }
 
   def apply[Cmd, Evt](serverHost: String, serverPort: Int, routerConfig: RouterConfig,
-                      description: String = "Sentinel Client", workerReconnectTime: FiniteDuration = 2 seconds, stages: ⇒ PipelineStage[PipelineContext, Cmd, ByteString, Evt, ByteString], Resolver: SentinelResolver[Evt, Cmd] = Client.defaultResolver[Cmd, Evt], lowBytes: Long = 100L, highBytes: Long = 5000L, maxBufferSize: Long = 20000L)(implicit system: ActorSystem) = {
-    val core = system.actorOf(Props(new ClientCore[Cmd, Evt](routerConfig, description, workerReconnectTime, stages, Resolver)(lowBytes, highBytes, maxBufferSize)), name = "sentinel-client-" + java.util.UUID.randomUUID.toString)
+                      description: String = "Sentinel Client", workerReconnectTime: FiniteDuration = 2 seconds, stages: ⇒ PipelineStage[PipelineContext, Cmd, ByteString, Evt, ByteString], resolver: SentinelResolver[Evt, Cmd] = Client.defaultResolver[Cmd, Evt], lowBytes: Long = 100L, highBytes: Long = 5000L, maxBufferSize: Long = 20000L)(implicit system: ActorSystem) = {
+    val core = system.actorOf(Props(new ClientCore[Cmd, Evt](routerConfig, description, workerReconnectTime, stages, resolver)(lowBytes, highBytes, maxBufferSize)), name = "sentinel-client-" + java.util.UUID.randomUUID.toString)
     core ! Client.ConnectToServer(new InetSocketAddress(serverHost, serverPort))
     new Client[Cmd, Evt] {
       val actor = core
