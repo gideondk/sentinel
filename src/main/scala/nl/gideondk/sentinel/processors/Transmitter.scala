@@ -70,11 +70,11 @@ class Transmitter[Cmd, Evt](init: Init[WithinActorContext, Cmd, Evt], streamChun
         val promise = Promise[HandleResult]()
         responseQueue :+= promise
 
-        val streamPromise = Promise[Process[Future, Evt]]()
-        context.parent ! Registration.StreamReplyRegistration(streamPromise)
+        val imcomingStreamPromise = Promise[Process[Future, Evt]]()
+        context.parent ! Registration.StreamReplyRegistration(imcomingStreamPromise)
 
         for {
-          source ← streamPromise.future
+          source ← imcomingStreamPromise.future
           response ← x.f(data)(source) map (result ⇒ HandleAsyncResult(result))
         } yield {
           promise.success(response)
@@ -83,13 +83,14 @@ class Transmitter[Cmd, Evt](init: Init[WithinActorContext, Cmd, Evt], streamChun
 
       case x: ReactToStream[Evt, Cmd] ⇒
         val promise = Promise[HandleResult]()
+
         responseQueue :+= promise
 
-        val streamPromise = Promise[Process[Future, Evt]]()
-        context.parent ! Registration.StreamReplyRegistration(streamPromise)
+        val imcomingStreamPromise = Promise[Process[Future, Evt]]()
+        context.parent ! Registration.StreamReplyRegistration(imcomingStreamPromise)
 
         for {
-          source ← streamPromise.future
+          source ← imcomingStreamPromise.future
           response ← x.f(data) map (result ⇒ HandleStreamResult(source through result))
         } yield {
           promise.success(response)

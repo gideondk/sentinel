@@ -19,8 +19,8 @@ class Antenna[Cmd, Evt](init: Init[WithinActorContext, Cmd, Evt], Resolver: Sent
   import context.dispatcher
 
   def active(tcpHandler: ActorRef): Receive = {
-    val receiver = context.actorOf(Props(new Receiver(init)))
-    val transmitter = context.actorOf(Props(new Transmitter(init)).withDispatcher("nl.gideondk.sentinel.sentinel-dispatcher"))
+    val receiver = context.actorOf(Props(new Receiver(init)), name = "resolver")
+    val transmitter = context.actorOf(Props(new Transmitter(init)).withDispatcher("nl.gideondk.sentinel.sentinel-dispatcher"), name = "transmitter")
 
     context watch transmitter
     context watch receiver
@@ -48,7 +48,6 @@ class Antenna[Cmd, Evt](init: Init[WithinActorContext, Cmd, Evt], Resolver: Sent
 
         case x: Command.SendStream[Cmd, Evt] ⇒
           receiver ! x.registration
-          tcpHandler ! init.Command(x.command)
           transmitter ! TransmitterActionAndData(TransmitterAction.ProduceStream[Unit, Cmd](Unit ⇒ Future(x.stream)), ())
 
         case x: Command.Conversate[Cmd, Evt] ⇒

@@ -67,7 +67,7 @@ class RequestResponseSpec extends WordSpec with ShouldMatchers {
       val c = client(portNumber)
 
       val chunks = List.fill(5)(SimpleStreamChunk("ABCDE"))
-      val action = c <<?~~< (SimpleCommand(TOTAL_CHUNK_SIZE, ""), Process.emitRange(0, 500) |> process1.lift(x ⇒ SimpleStreamChunk("ABCDE")) onComplete (Process.emit(SimpleStreamChunk(""))))
+      val action = c <<?~~< (SimpleCommand(TOTAL_CHUNK_SIZE, ""), Process.emitRange(0, 500) |> process1.lift(x ⇒ SimpleStreamChunk("ABCDEF")) onComplete (Process.emit(SimpleStreamChunk(""))))
 
       val localLength = chunks.foldLeft(0)((b, a) ⇒ b + a.payload.length)
       action.run.isSuccess && action.run.toOption.get.payload.toInt == localLength

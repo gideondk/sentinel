@@ -33,7 +33,10 @@ object Receiver {
 
   trait ReceiverData[Evt]
 
+  case class ReceiverException[Evt](cause: Evt) extends Exception
+
   case class DataChunk[Evt](c: Evt) extends ReceiverData[Evt]
+  case class ErrorChunk[Evt](c: Evt) extends ReceiverData[Evt]
   case class EndOfStream[Evt]() extends ReceiverData[Evt]
 }
 
@@ -62,11 +65,19 @@ class Receiver[Cmd, Evt](init: Init[WithinActorContext, Cmd, Evt], streamChunkTi
             buffer :+= Promise.successful(cd)
         }
       }
+
+    //println(action)
     action match {
-      case Consume ⇒
+      case AcceptSignal ⇒
         handleReceiverData(DataChunk(data))
-      case EndStream ⇒ handleReceiverData(EndOfStream[Evt]())
-      case ConsumeAndEndStream ⇒
+      case AcceptError ⇒
+        handleReceiverData(ErrorChunk(data))
+
+      case ConsumeStreamChunk ⇒
+        handleReceiverData(DataChunk(data)) // Should eventually seperate data chunks and stream chunks for better socket consistency handling
+      case EndStream ⇒
+        handleReceiverData(EndOfStream[Evt]())
+      case ConsumeChunkAndEndStream ⇒
         handleReceiverData(DataChunk(data))
         handleReceiverData(EndOfStream[Evt]())
 
@@ -82,19 +93,28 @@ class Receiver[Cmd, Evt](init: Init[WithinActorContext, Cmd, Evt], streamChunkTi
     implicit val timeout = streamChunkTimeout
 
     registration match {
-      case x: ReplyRegistration[Evt] ⇒ x.promise.completeWith((self ? AskNextChunk).mapTo[Promise[DataChunk[Evt]]].flatMap(_.future.map(_.c))) // Handle stream leakage...
+      case x: ReplyRegistration[Evt] ⇒ x.promise.completeWith((self ? AskNextChunk).mapTo[Promise[ReceiverData[Evt]]].flatMap(_.future.flatMap {
+        _ match {
+          case x: DataChunk[Evt] ⇒
+            Future.successful(x.c)
+          case x: ErrorChunk[Evt] ⇒
+            Future.failed(ReceiverException(x.c))
+        }
+      }))
       case x: StreamReplyRegistration[Evt] ⇒
         val resource = actorResource((worker ? RegisterStreamReceiver).map(x ⇒ worker))((x: ActorRef) ⇒ (x ? ReleaseStreamReceiver).mapTo[Unit]) {
           (x: ActorRef) ⇒
-            (x ? AskNextChunk).mapTo[Promise[ReceiverData[Evt]]].flatMap(_.future).flatMap { x ⇒
-              x match {
+            (x ? AskNextChunk).mapTo[Promise[ReceiverData[Evt]]].flatMap(_.future).flatMap {
+              _ match {
                 case x: EndOfStream[Evt] ⇒
                   Future.failed(End)
                 case x: DataChunk[Evt] ⇒
                   Future.successful(x.c)
+                case x: ErrorChunk[Evt] ⇒
+                  Future.failed(ReceiverException(x.c))
               }
             }
-        } pipe Process.await1
+        }
         runningSource = Some(resource)
         x.promise success resource
     }

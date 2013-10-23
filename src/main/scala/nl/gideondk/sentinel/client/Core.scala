@@ -27,7 +27,9 @@ trait Client[Cmd, Evt] {
 
   def <~~?>>(command: Cmd)(implicit context: ExecutionContext): Task[Process[Future, Evt]] = askStream(command)
 
-  def <<?~~<(command: Cmd, source: Process[Future, Evt])(implicit context: ExecutionContext): Task[Evt] = sendStream(command, source)
+  def <<?~~<(command: Cmd, source: Process[Future, Cmd])(implicit context: ExecutionContext): Task[Evt] = sendStream(command, source)
+
+  def <<?~~<(source: Process[Future, Cmd])(implicit context: ExecutionContext): Task[Evt] = sendStream(source)
 
   def <<?~~?>>(command: Cmd)(implicit context: ExecutionContext): Task[scalaz.stream.Channel[Future, Cmd, Evt]] = conversate(command)
 
@@ -43,9 +45,12 @@ trait Client[Cmd, Evt] {
     promise.future
   }
 
-  def sendStream(command: Cmd, source: Process[Future, Evt]): Task[Evt] = Task {
+  def sendStream(command: Cmd, source: Process[Future, Cmd]): Task[Evt] =
+    sendStream(Process.emit(command) ++ source)
+
+  def sendStream(source: Process[Future, Cmd]): Task[Evt] = Task {
     val promise = Promise[Evt]()
-    actor ! Command.SendStream(command, source, ReplyRegistration(promise))
+    actor ! Command.SendStream(source, ReplyRegistration(promise))
     promise.future
   }
 
@@ -61,13 +66,13 @@ object Client {
 
   def defaultResolver[Cmd, Evt] = new SentinelResolver[Evt, Cmd] {
     def process = {
-      case _ ⇒ ReceiverAction.Consume
+      case _ ⇒ ReceiverAction.AcceptSignal
     }
   }
 
   def apply[Cmd, Evt](serverHost: String, serverPort: Int, routerConfig: RouterConfig,
                       description: String = "Sentinel Client", workerReconnectTime: FiniteDuration = 2 seconds, stages: ⇒ PipelineStage[PipelineContext, Cmd, ByteString, Evt, ByteString], Resolver: SentinelResolver[Evt, Cmd] = Client.defaultResolver[Cmd, Evt], lowBytes: Long = 100L, highBytes: Long = 5000L, maxBufferSize: Long = 20000L)(implicit system: ActorSystem) = {
-    val core = system.actorOf(Props(new ClientCore[Cmd, Evt](routerConfig, description, workerReconnectTime, stages, Resolver)(lowBytes, highBytes, maxBufferSize)))
+    val core = system.actorOf(Props(new ClientCore[Cmd, Evt](routerConfig, description, workerReconnectTime, stages, Resolver)(lowBytes, highBytes, maxBufferSize)), name = "sentinel-client-" + java.util.UUID.randomUUID.toString)
     core ! Client.ConnectToServer(new InetSocketAddress(serverHost, serverPort))
     new Client[Cmd, Evt] {
       val actor = core

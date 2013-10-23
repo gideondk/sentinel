@@ -131,7 +131,7 @@ object Task extends TaskImplementation {
 
 trait FutureCatchable extends Catchable[Future] {
   def fail[A](e: Throwable): Future[A] = Future.failed(e)
-  def attempt[A](t: Future[A]): Future[Throwable \/ A] = Monad[Future].map(t)(x ⇒ \/-(x))
+  def attempt[A](t: Future[A]): Future[Throwable \/ A] = Monad[Future].map(t)(x ⇒ \/-(x)).recover { case ex ⇒ -\/(ex) }
 }
 
 object CatchableFuture {
