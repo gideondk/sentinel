@@ -12,13 +12,16 @@ import akka.util.Timeout
 
 import scalaz.contrib.std.scalaFuture.futureInstance
 
+import scalaz._
+import Scalaz._
+
 import scalaz.stream.Process
 import scalaz.stream.Process._
 
 import nl.gideondk.sentinel._
 import CatchableFuture._
 
-object Transmitter {
+object Producer {
   trait HandleResult
   case class HandleAsyncResult[Cmd](response: Cmd) extends HandleResult
   case class HandleStreamResult[Cmd](stream: Process[Future, Cmd]) extends HandleResult
@@ -34,68 +37,54 @@ object Transmitter {
   case object DequeueResponse
 }
 
-class Transmitter[Cmd, Evt](init: Init[WithinActorContext, Cmd, Evt], streamChunkTimeout: Timeout = Timeout(5 seconds)) extends Actor with ActorLogging with Stash {
-  import Transmitter._
-  import TransmitterAction._
+class Producer[Cmd, Evt](init: Init[WithinActorContext, Cmd, Evt], streamChunkTimeout: Timeout = Timeout(5 seconds)) extends Actor with ActorLogging with Stash {
+  import Producer._
+  import ProducerAction._
   import context.dispatcher
 
   var responseQueue = Queue.empty[Promise[HandleResult]]
 
-  def processAction(data: Evt, action: TransmitterAction[Evt, Cmd]) = {
+  def produceAsyncResult(data: Evt, f: Evt ⇒ Future[Cmd]) = {
+    val worker = self
+    val promise = Promise[HandleResult]()
+    responseQueue :+= promise
+
+    for {
+      response ← f(data) map (result ⇒ HandleAsyncResult(result))
+    } yield {
+      promise.success(response)
+      worker ! DequeueResponse
+    }
+  }
+
+  def produceStreamResult(data: Evt, f: Evt ⇒ Future[Process[Future, Cmd]]) = {
+    val worker = self
+    val promise = Promise[HandleResult]()
+    responseQueue :+= promise
+
+    for {
+      response ← f(data) map (result ⇒ HandleStreamResult(result))
+    } yield {
+      promise.success(response)
+      worker ! DequeueResponse
+    }
+  }
+
+  val initSignal = produceAsyncResult(_, _)
+  val initStreamConsumer = produceAsyncResult(_, _)
+  val initStreamProducer = produceStreamResult(_, _)
+
+  def processAction(data: Evt, action: ProducerAction[Evt, Cmd]) = {
     val worker = self
     val future = action match {
-      case x: Signal[Evt, Cmd] ⇒
-        val promise = Promise[HandleResult]()
-        responseQueue :+= promise
+      case x: Signal[Evt, Cmd]        ⇒ initSignal(data, x.f)
 
-        for {
-          response ← x.f(data) map (result ⇒ HandleAsyncResult(result))
-        } yield {
-          promise.success(response)
-          worker ! DequeueResponse
-        }
-
-      case x: ProduceStream[Evt, Cmd] ⇒
-        val promise = Promise[HandleResult]()
-        responseQueue :+= promise
-
-        for {
-          response ← x.f(data) map (result ⇒ HandleStreamResult(result))
-        } yield {
-          promise.success(response)
-          worker ! DequeueResponse
-        }
+      case x: ProduceStream[Evt, Cmd] ⇒ initStreamProducer(data, x.f)
 
       case x: ConsumeStream[Evt, Cmd] ⇒
-        val promise = Promise[HandleResult]()
-        responseQueue :+= promise
-
         val imcomingStreamPromise = Promise[Process[Future, Evt]]()
         context.parent ! Registration.StreamReplyRegistration(imcomingStreamPromise)
-
-        for {
-          source ← imcomingStreamPromise.future
-          response ← x.f(data)(source) map (result ⇒ HandleAsyncResult(result))
-        } yield {
-          promise.success(response)
-          worker ! DequeueResponse
-        }
-
-      case x: ReactToStream[Evt, Cmd] ⇒
-        val promise = Promise[HandleResult]()
-
-        responseQueue :+= promise
-
-        val imcomingStreamPromise = Promise[Process[Future, Evt]]()
-        context.parent ! Registration.StreamReplyRegistration(imcomingStreamPromise)
-
-        for {
-          source ← imcomingStreamPromise.future
-          response ← x.f(data) map (result ⇒ HandleStreamResult(source through result))
-        } yield {
-          promise.success(response)
-          worker ! DequeueResponse
-        }
+        imcomingStreamPromise.future >>= ((s) ⇒ initStreamConsumer(data, x.f(_)(s)))
     }
 
     future.onFailure {
@@ -106,7 +95,7 @@ class Transmitter[Cmd, Evt](init: Init[WithinActorContext, Cmd, Evt], streamChun
   }
 
   def handleRequest: Receive = {
-    case x: TransmitterActionAndData[Evt, Cmd] ⇒
+    case x: ProducerActionAndData[Evt, Cmd] ⇒
       processAction(x.data, x.action)
   }
 
@@ -140,12 +129,13 @@ class Transmitter[Cmd, Evt](init: Init[WithinActorContext, Cmd, Evt], streamChun
       val s = x.stream to actorResource((worker ? StartStreamHandling).map(x ⇒ worker))((a: ActorRef) ⇒ (a ? StreamProducerEnded).map(x ⇒ ()))((a: ActorRef) ⇒ Future { (c: Cmd) ⇒ (self ? StreamProducerChunk(c)).map(x ⇒ ()) })
       s.run
       context.become(handleRequestAndStreamResponse)
+
     case x: StreamProducerMessage ⇒
-      log.error("Internal leakage in stream: received stream unexpected stream chunk")
+      log.error("Internal leakage in stream: received unexpected stream chunk")
       context.stop(self)
   }
 
-  def handleRequestAndStreamResponse: Receive = handleRequest orElse handleDequeue orElse {
+  def handleRequestAndStreamResponse: Receive = handleRequest orElse {
     case StartStreamHandling ⇒
       sender ! ReadyForStream
     case StreamProducerChunk(c) ⇒

@@ -1,4 +1,4 @@
-package nl.gideondk.sentinel.client
+package nl.gideondk.sentinel
 
 import java.net.InetSocketAddress
 
@@ -23,15 +23,13 @@ trait Client[Cmd, Evt] {
 
   def actor: ActorRef
 
-  def <~<(command: Cmd)(implicit context: ExecutionContext): Task[Evt] = ask(command)
+  def ?(command: Cmd)(implicit context: ExecutionContext): Task[Evt] = ask(command)
 
-  def <~~?>>(command: Cmd)(implicit context: ExecutionContext): Task[Process[Future, Evt]] = askStream(command)
+  def ?->>(command: Cmd)(implicit context: ExecutionContext): Task[Process[Future, Evt]] = askStream(command)
 
-  def <<?~~<(command: Cmd, source: Process[Future, Cmd])(implicit context: ExecutionContext): Task[Evt] = sendStream(command, source)
+  def ?<<-(command: Cmd, source: Process[Future, Cmd])(implicit context: ExecutionContext): Task[Evt] = sendStream(command, source)
 
-  def <<?~~<(source: Process[Future, Cmd])(implicit context: ExecutionContext): Task[Evt] = sendStream(source)
-
-  def <<?~~?>>(command: Cmd)(implicit context: ExecutionContext): Task[scalaz.stream.Channel[Future, Cmd, Evt]] = conversate(command)
+  def ?<<-(source: Process[Future, Cmd])(implicit context: ExecutionContext): Task[Evt] = sendStream(source)
 
   def ask(command: Cmd)(implicit context: ExecutionContext): Task[Evt] = Task {
     val promise = Promise[Evt]()
@@ -53,12 +51,6 @@ trait Client[Cmd, Evt] {
     actor ! Command.SendStream(source, ReplyRegistration(promise))
     promise.future
   }
-
-  def conversate(command: Cmd): Task[scalaz.stream.Channel[Future, Cmd, Evt]] = Task {
-    val promise = Promise[scalaz.stream.Channel[Future, Cmd, Evt]]()
-    actor ! Command.Conversate(command, StreamReplyRegistration(promise))
-    promise.future
-  }
 }
 
 object Client {
@@ -66,7 +58,7 @@ object Client {
 
   def defaultResolver[Cmd, Evt] = new SentinelResolver[Evt, Cmd] {
     def process = {
-      case _ ⇒ ReceiverAction.AcceptSignal
+      case _ ⇒ ConsumerAction.AcceptSignal
     }
   }
 
@@ -110,8 +102,8 @@ class ClientAntennaManager[Cmd, Evt](address: InetSocketAddress, stages: ⇒ Pip
     case CommandFailed(cmd: akka.io.Tcp.Command) ⇒
       context.stop(self) // Bit harsh at the moment, but should trigger reconnect and probably do better next time...
 
-    //    case x: SentinelCommand[_] ⇒
-    //      x.promise.failure(NoConnectionAvailable("Client has not yet been connected to a endpoint"))
+    // case x: nl.gideondk.sentinel.Command[Cmd, Evt] ⇒
+    //   x.registration.promise.failure(new Exception("Client has not yet been connected to a endpoint"))
 
     case _ ⇒ stash()
   }
@@ -127,7 +119,6 @@ class ClientCore[Cmd, Evt](routerConfig: RouterConfig, description: String, reco
   var addresses = List.empty[Tuple2[InetSocketAddress, Option[ActorRef]]]
 
   private case object InitializeRouter
-
   private case class ReconnectRouter(address: InetSocketAddress)
 
   var coreRouter: Option[ActorRef] = None

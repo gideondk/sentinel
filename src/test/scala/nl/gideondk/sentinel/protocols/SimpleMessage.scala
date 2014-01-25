@@ -19,6 +19,7 @@ trait SimpleMessageFormat {
 case class SimpleCommand(cmd: Int, payload: String) extends SimpleMessageFormat // 1
 case class SimpleReply(payload: String) extends SimpleMessageFormat // 2
 case class SimpleStreamChunk(payload: String) extends SimpleMessageFormat // 3
+case class SimpleError(payload: String) extends SimpleMessageFormat // 4
 
 class PingPongMessageStage extends SymmetricPipelineStage[PipelineContext, SimpleMessageFormat, ByteString] {
   override def apply(ctx: PipelineContext) = new SymmetricPipePair[SimpleMessageFormat, ByteString] {
@@ -39,6 +40,9 @@ class PingPongMessageStage extends SymmetricPipelineStage[PipelineContext, Simpl
             case x: SimpleStreamChunk ⇒
               bsb.putByte(3.toByte)
               bsb.putBytes(x.payload.getBytes)
+            case x: SimpleError ⇒
+              bsb.putByte(4.toByte)
+              bsb.putBytes(x.payload.getBytes)
             case _ ⇒
           }
           Seq(Right(bsb.result))
@@ -56,6 +60,8 @@ class PingPongMessageStage extends SymmetricPipelineStage[PipelineContext, Simpl
             Seq(Left(SimpleReply(new String(iter.toByteString.toArray))))
           case 3 ⇒
             Seq(Left(SimpleStreamChunk(new String(iter.toByteString.toArray))))
+          case 4 ⇒
+            Seq(Left(SimpleError(new String(iter.toByteString.toArray))))
         }
 
     }
@@ -68,13 +74,15 @@ object SimpleMessage {
   val PING_PONG_COMMAND = 1
   val TOTAL_CHUNK_SIZE = 2
   val GENERATE_NUMBERS = 3
+  val CHUNK_LENGTH = 4
 }
 
 import SimpleMessage._
 trait DefaultSimpleMessageHandler extends SentinelResolver[SimpleMessageFormat, SimpleMessageFormat] {
   def process = {
-    case SimpleStreamChunk(x) ⇒ if (x.length > 0) consumeStreamChunk else endStream
-    case x: SimpleReply       ⇒ ReceiverAction.AcceptSignal
+    case SimpleStreamChunk(x) ⇒ if (x.length > 0) ConsumerAction.ConsumeStreamChunk else ConsumerAction.EndStream
+    case x: SimpleError       ⇒ ConsumerAction.AcceptError
+    case x: SimpleReply       ⇒ ConsumerAction.AcceptSignal
   }
 }
 
@@ -83,12 +91,12 @@ object SimpleClientHandler extends DefaultSimpleMessageHandler
 object SimpleServerHandler extends DefaultSimpleMessageHandler {
 
   override def process = super.process orElse {
-    case SimpleCommand(PING_PONG_COMMAND, payload) ⇒ answer { x ⇒ Future(SimpleReply("PONG")) }
-    case SimpleCommand(TOTAL_CHUNK_SIZE, payload) ⇒ consumeStream { x ⇒
-      s ⇒
+    case SimpleCommand(PING_PONG_COMMAND, payload) ⇒ ProducerAction.Signal { x: SimpleCommand ⇒ Future(SimpleReply("PONG")) }
+    case SimpleCommand(TOTAL_CHUNK_SIZE, payload) ⇒ ProducerAction.ConsumeStream { x: SimpleCommand ⇒
+      s: Process[Future, SimpleStreamChunk] ⇒
         s pipe process1.fold(0) { (b, a) ⇒ b + a.payload.length } runLastOr (throw new Exception("")) map (x ⇒ SimpleReply(x.toString))
     }
-    case SimpleCommand(GENERATE_NUMBERS, payload) ⇒ produceStream { x ⇒
+    case SimpleCommand(GENERATE_NUMBERS, payload) ⇒ ProducerAction.ProduceStream { x: SimpleCommand ⇒
       val count = payload.toInt
       Future((Process.emitRange(0, count) |> process1.lift(x ⇒ SimpleReply(x.toString))) onComplete (Process.emit(SimpleStreamChunk(""))))
     }

@@ -14,8 +14,6 @@ import akka.routing.RoundRobinRouter
 import akka.util.ByteString
 
 import Task._
-import server._
-import client._
 
 import scalaz._
 import Scalaz._
@@ -32,7 +30,6 @@ import protocols._
 
 import scalaz.contrib.std.scalaFuture.futureInstance
 
-import nl.gideondk.sentinel._
 import CatchableFuture._
 
 import java.net.InetSocketAddress
@@ -42,27 +39,21 @@ class RequestResponseSpec extends WordSpec with ShouldMatchers {
 
   implicit val duration = Duration(5, SECONDS)
 
-  //def worker(implicit system: ActorSystem) = system.actorOf(Props(new SentinelClientWorker(new InetSocketAddress("localhost", 9999), PingPong.stages, "Worker")(1, 1, 10)).withDispatcher("nl.gideondk.sentinel.sentinel-dispatcher"))
-
   def client(portNumber: Int)(implicit system: ActorSystem) = Client("localhost", portNumber, RandomRouter(16), "Worker", 5 seconds, SimpleMessage.stages, SimpleClientHandler)(system)
 
-  def server(portNumber: Int)(implicit system: ActorSystem) = SentinelServer(portNumber, SimpleServerHandler)(SimpleMessage.stages)(system)
+  def server(portNumber: Int)(implicit system: ActorSystem) = {
+    val s = SentinelServer(portNumber, SimpleServerHandler)(SimpleMessage.stages)(system)
+    Thread.sleep(100)
+    s
+  }
 
   "A client" should {
-    //    "return a exception when a request is done when no connection is available" in new TestKitSpec {
-    //      val actor = worker
-    //      val promise = Promise[PingPongMessageFormat]()
-    //      val operation = actor ! Operation(PingPongMessageFormat("PING"), promise)
-    //      val result = Try(Await.result(promise.future, 5 seconds))
-    //      evaluating { result.get } should produce[SentinelClientWorker.NoConnectionAvailable]
-    //    }
-
     "be able to request a response from a server" in new TestKitSpec {
       val portNumber = TestHelpers.portNumber.getAndIncrement()
       val s = server(portNumber)
       val c = client(portNumber)
 
-      val action = c <~< SimpleCommand(PING_PONG_COMMAND, "")
+      val action = c ? SimpleCommand(PING_PONG_COMMAND, "")
       action.run.isSuccess
     }
 
@@ -73,7 +64,7 @@ class RequestResponseSpec extends WordSpec with ShouldMatchers {
 
       val count = 500
       val chunks = List.fill(count)(SimpleStreamChunk("ABCDEF"))
-      val action = c <<?~~< (SimpleCommand(TOTAL_CHUNK_SIZE, ""), Process.emitRange(0, count) |> process1.lift(x ⇒ SimpleStreamChunk("ABCDEF")) onComplete (Process.emit(SimpleStreamChunk(""))))
+      val action = c ?<<- (SimpleCommand(TOTAL_CHUNK_SIZE, ""), Process.emitRange(0, count) |> process1.lift(x ⇒ SimpleStreamChunk("ABCDEF")) onComplete (Process.emit(SimpleStreamChunk(""))))
 
       val localLength = chunks.foldLeft(0)((b, a) ⇒ b + a.payload.length)
       action.run.isSuccess && action.run.toOption.get.payload.toInt == localLength
@@ -85,38 +76,12 @@ class RequestResponseSpec extends WordSpec with ShouldMatchers {
       val c = client(portNumber)
 
       val count = 500
-      val action = c <~~?>> SimpleCommand(GENERATE_NUMBERS, count.toString)
+      val action = c ?->> SimpleCommand(GENERATE_NUMBERS, count.toString)
 
       val stream = action.copoint
       val result = Await.result(stream.chunkAll.runLastOr(throw new Exception("Problems occured during stream handling")), 5 seconds)
       result.length == count
     }
-
-    // "be able to ping to the server in timely fashion" in new TestKitSpec {
-    //   val serverSystem = akka.actor.ActorSystem("ping-server-system")
-    //   val clientSystem = akka.actor.ActorSystem("ping-client-system")
-
-    //   val s = server(serverSystem)
-    //   val c = client(clientSystem)
-
-    //   val num = 50000
-
-    //   for (i ← 0 to 10) {
-    //     val mulActs = for (i ← 1 to num) yield c <~< PingPongMessageFormat("PING")
-    //     val tasks = Task.sequenceSuccesses(mulActs.toList)
-
-    //     val fut = tasks.start
-    //     BenchmarkHelpers.timed("Ping-Ponging " + num + " requests", num) {
-    //       val res = Await.result(fut, Duration.apply(10, scala.concurrent.duration.SECONDS))
-    //       if (res.get.length != num) throw new Exception("Internal benchmark error")
-    //       true
-    //     }
-
-    //     val res = Await.result(fut, Duration.apply(10, scala.concurrent.duration.SECONDS))
-    //     res.get.filterNot(_ == PingPongMessageFormat("PONG")).length == 0
-    //   }
-
-    // }
   }
 }
 

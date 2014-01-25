@@ -1,4 +1,4 @@
-package nl.gideondk.sentinel.server
+package nl.gideondk.sentinel
 
 import java.net.InetSocketAddress
 
@@ -8,6 +8,7 @@ import akka.io.Tcp._
 import akka.util.ByteString
 
 import nl.gideondk.sentinel._
+import nl.gideondk.sentinel.SentinelResolver
 
 class ServerCore[Cmd, Evt](port: Int, description: String, stages: ⇒ PipelineStage[PipelineContext, Cmd, ByteString, Evt, ByteString],
                            resolver: SentinelResolver[Evt, Cmd], workerDescription: String = "Sentinel Client Worker")(lowBytes: Long, highBytes: Long, maxBufferSize: Long) extends Actor with ActorLogging {
@@ -44,5 +45,11 @@ class ServerCore[Cmd, Evt](port: Int, description: String, stages: ⇒ PipelineS
 
       antenna ! Management.RegisterTcpHandler(tcpHandler)
       connection ! Tcp.Register(tcpHandler)
+  }
+}
+
+object SentinelServer {
+  def apply[Evt, Cmd](serverPort: Int, resolver: SentinelResolver[Evt, Cmd], description: String = "Sentinel Server")(stages: ⇒ PipelineStage[PipelineContext, Cmd, ByteString, Evt, ByteString], lowBytes: Long = 100L, highBytes: Long = 50 * 1024L, maxBufferSize: Long = 1000L * 1024L)(implicit system: ActorSystem): ActorRef = {
+    system.actorOf(Props(new ServerCore(serverPort, description, stages, resolver)(lowBytes, highBytes, maxBufferSize)).withDispatcher("nl.gideondk.sentinel.sentinel-dispatcher"), name = "sentinel-server-" + java.util.UUID.randomUUID.toString)
   }
 }

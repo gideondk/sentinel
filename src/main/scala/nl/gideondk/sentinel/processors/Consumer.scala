@@ -22,41 +22,41 @@ import nl.gideondk.sentinel._
 import CatchableFuture._
 import Registration._
 
-object Receiver {
-  trait StreamReceiverMessage
+object Consumer {
+  trait StreamConsumerMessage
 
-  case object ReadyForStream extends StreamReceiverMessage
-  case object StartingWithStream extends StreamReceiverMessage
-  case object AskNextChunk extends StreamReceiverMessage
-  case object RegisterStreamReceiver extends StreamReceiverMessage
-  case object ReleaseStreamReceiver extends StreamReceiverMessage
+  case object ReadyForStream extends StreamConsumerMessage
+  case object StartingWithStream extends StreamConsumerMessage
+  case object AskNextChunk extends StreamConsumerMessage
+  case object RegisterStreamConsumer extends StreamConsumerMessage
+  case object ReleaseStreamConsumer extends StreamConsumerMessage
 
-  trait ReceiverData[Evt]
+  trait ConsumerData[Evt]
 
-  case class ReceiverException[Evt](cause: Evt) extends Exception
+  case class ConsumerException[Evt](cause: Evt) extends Exception
 
-  case class DataChunk[Evt](c: Evt) extends ReceiverData[Evt]
-  case class ErrorChunk[Evt](c: Evt) extends ReceiverData[Evt]
-  case class EndOfStream[Evt]() extends ReceiverData[Evt]
+  case class DataChunk[Evt](c: Evt) extends ConsumerData[Evt]
+  case class ErrorChunk[Evt](c: Evt) extends ConsumerData[Evt]
+  case class EndOfStream[Evt]() extends ConsumerData[Evt]
 }
 
-class Receiver[Cmd, Evt](init: Init[WithinActorContext, Cmd, Evt], streamChunkTimeout: Timeout = Timeout(5 seconds)) extends Actor with ActorLogging {
+class Consumer[Cmd, Evt](init: Init[WithinActorContext, Cmd, Evt], streamChunkTimeout: Timeout = Timeout(5 seconds)) extends Actor with ActorLogging {
   import Registration._
-  import Receiver._
-  import ReceiverAction._
+  import Consumer._
+  import ConsumerAction._
 
   import context.dispatcher
 
-  var hooks = Queue[Promise[ReceiverData[Evt]]]()
-  var buffer = Queue[Promise[ReceiverData[Evt]]]()
+  var hooks = Queue[Promise[ConsumerData[Evt]]]()
+  var buffer = Queue[Promise[ConsumerData[Evt]]]()
 
   var registrations = Queue[Registration[Evt, _]]()
   var currentPromise: Option[Promise[Evt]] = None
 
   var runningSource: Option[Process[Future, Evt]] = None
 
-  def processAction(data: Evt, action: ReceiverAction) = {
-      def handleReceiverData(cd: ReceiverData[Evt]) = {
+  def processAction(data: Evt, action: ConsumerAction) = {
+      def handleConsumerData(cd: ConsumerData[Evt]) = {
         hooks.headOption match {
           case Some(x) ⇒
             x.success(cd)
@@ -66,20 +66,19 @@ class Receiver[Cmd, Evt](init: Init[WithinActorContext, Cmd, Evt], streamChunkTi
         }
       }
 
-    //println(action)
     action match {
       case AcceptSignal ⇒
-        handleReceiverData(DataChunk(data))
+        handleConsumerData(DataChunk(data))
       case AcceptError ⇒
-        handleReceiverData(ErrorChunk(data))
+        handleConsumerData(ErrorChunk(data))
 
       case ConsumeStreamChunk ⇒
-        handleReceiverData(DataChunk(data)) // Should eventually seperate data chunks and stream chunks for better socket consistency handling
+        handleConsumerData(DataChunk(data)) // Should eventually seperate data chunks and stream chunks for better socket consistency handling
       case EndStream ⇒
-        handleReceiverData(EndOfStream[Evt]())
+        handleConsumerData(EndOfStream[Evt]())
       case ConsumeChunkAndEndStream ⇒
-        handleReceiverData(DataChunk(data))
-        handleReceiverData(EndOfStream[Evt]())
+        handleConsumerData(DataChunk(data))
+        handleConsumerData(EndOfStream[Evt]())
 
       case Ignore ⇒ ()
     }
@@ -93,25 +92,25 @@ class Receiver[Cmd, Evt](init: Init[WithinActorContext, Cmd, Evt], streamChunkTi
     implicit val timeout = streamChunkTimeout
 
     registration match {
-      case x: ReplyRegistration[Evt] ⇒ x.promise.completeWith((self ? AskNextChunk).mapTo[Promise[ReceiverData[Evt]]].flatMap(_.future.flatMap {
+      case x: ReplyRegistration[Evt] ⇒ x.promise.completeWith((self ? AskNextChunk).mapTo[Promise[ConsumerData[Evt]]].flatMap(_.future.flatMap {
         _ match {
           case x: DataChunk[Evt] ⇒
             Future.successful(x.c)
           case x: ErrorChunk[Evt] ⇒
-            Future.failed(ReceiverException(x.c))
+            Future.failed(ConsumerException(x.c))
         }
       }))
       case x: StreamReplyRegistration[Evt] ⇒
-        val resource = actorResource((worker ? RegisterStreamReceiver).map(x ⇒ worker))((x: ActorRef) ⇒ (x ? ReleaseStreamReceiver).mapTo[Unit]) {
+        val resource = actorResource((worker ? RegisterStreamConsumer).map(x ⇒ worker))((x: ActorRef) ⇒ (x ? ReleaseStreamConsumer).mapTo[Unit]) {
           (x: ActorRef) ⇒
-            (x ? AskNextChunk).mapTo[Promise[ReceiverData[Evt]]].flatMap(_.future).flatMap {
+            (x ? AskNextChunk).mapTo[Promise[ConsumerData[Evt]]].flatMap(_.future).flatMap {
               _ match {
                 case x: EndOfStream[Evt] ⇒
                   Future.failed(End)
                 case x: DataChunk[Evt] ⇒
                   Future.successful(x.c)
                 case x: ErrorChunk[Evt] ⇒
-                  Future.failed(ReceiverException(x.c))
+                  Future.failed(ConsumerException(x.c))
               }
             }
         }
@@ -127,10 +126,10 @@ class Receiver[Cmd, Evt](init: Init[WithinActorContext, Cmd, Evt], streamChunkTi
   }
 
   var behavior: Receive = handleRegistrations orElse {
-    case RegisterStreamReceiver ⇒
+    case RegisterStreamConsumer ⇒
       sender ! StartingWithStream
 
-    case ReleaseStreamReceiver ⇒
+    case ReleaseStreamConsumer ⇒
       runningSource = None
       if (registrations.headOption.isDefined) popAndSetHook
       sender ! ()
@@ -141,13 +140,13 @@ class Receiver[Cmd, Evt](init: Init[WithinActorContext, Cmd, Evt], streamChunkTi
           buffer = buffer.tail
           p
         case None ⇒
-          val p = Promise[ReceiverData[Evt]]()
+          val p = Promise[ConsumerData[Evt]]()
           hooks :+= p
           p
       }
       sender ! promise
 
-    case x: ReceiverActionAndData[Evt] ⇒ processAction(x.data, x.action)
+    case x: ConsumerActionAndData[Evt] ⇒ processAction(x.data, x.action)
 
   }
 

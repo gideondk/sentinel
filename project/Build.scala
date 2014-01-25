@@ -29,8 +29,6 @@ object ApplicationBuild extends Build {
     "org.scalaz.stream" %% "scalaz-stream" % "0.2-SNAPSHOT",
 
     "org.scalatest" % "scalatest_2.10" % "1.9.1" % "test",
-    
-    "com.typesafe.play" %% "play-iteratees" % "2.2-akka22-SNAPSHOT",
 
     "com.typesafe.akka" %% "akka-actor" % "2.2.0",
     "com.typesafe.akka" %% "akka-testkit" % "2.2.0",

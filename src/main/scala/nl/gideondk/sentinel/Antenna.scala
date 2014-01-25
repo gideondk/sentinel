@@ -19,11 +19,11 @@ class Antenna[Cmd, Evt](init: Init[WithinActorContext, Cmd, Evt], Resolver: Sent
   import context.dispatcher
 
   def active(tcpHandler: ActorRef): Receive = {
-    val receiver = context.actorOf(Props(new Receiver(init)), name = "resolver")
-    val transmitter = context.actorOf(Props(new Transmitter(init)).withDispatcher("nl.gideondk.sentinel.sentinel-dispatcher"), name = "transmitter")
+    val consumer = context.actorOf(Props(new Consumer(init)), name = "resolver")
+    val producer = context.actorOf(Props(new Producer(init)).withDispatcher("nl.gideondk.sentinel.sentinel-dispatcher"), name = "producer")
 
-    context watch transmitter
-    context watch receiver
+    context watch producer
+    context watch consumer
 
       def handleTermination: Receive = {
         case x: Terminated ⇒ context.stop(self)
@@ -39,19 +39,16 @@ class Antenna[Cmd, Evt](init: Init[WithinActorContext, Cmd, Evt], Resolver: Sent
 
       def handleCommands: Receive = {
         case x: Command.Ask[Cmd, Evt] ⇒
-          receiver ! x.registration
+          consumer ! x.registration
           tcpHandler ! init.Command(x.payload)
 
         case x: Command.AskStream[Cmd, Evt] ⇒
-          receiver ! x.registration
+          consumer ! x.registration
           tcpHandler ! init.Command(x.payload)
 
         case x: Command.SendStream[Cmd, Evt] ⇒
-          receiver ! x.registration
-          transmitter ! TransmitterActionAndData(TransmitterAction.ProduceStream[Unit, Cmd](Unit ⇒ Future(x.stream)), ())
-
-        case x: Command.Conversate[Cmd, Evt] ⇒
-
+          consumer ! x.registration
+          producer ! ProducerActionAndData(ProducerAction.ProduceStream[Unit, Cmd](Unit ⇒ Future(x.stream)), ())
       }
 
       def handleReplies: Receive = {
@@ -64,12 +61,12 @@ class Antenna[Cmd, Evt](init: Init[WithinActorContext, Cmd, Evt], Resolver: Sent
 
     handleTermination orElse handleCommands orElse handleReplies orElse {
       case x: Registration[Evt, _] ⇒
-        receiver ! x
+        consumer ! x
 
       case init.Event(data) ⇒ {
         Resolver.process(data) match {
-          case x: TransmitterAction[Evt, Cmd] ⇒ transmitter ! TransmitterActionAndData[Evt, Cmd](x, data)
-          case x: ReceiverAction              ⇒ receiver ! ReceiverActionAndData[Evt](x, data)
+          case x: ProducerAction[Evt, Cmd] ⇒ producer ! ProducerActionAndData[Evt, Cmd](x, data)
+          case x: ConsumerAction           ⇒ consumer ! ConsumerActionAndData[Evt](x, data)
         }
       }
 

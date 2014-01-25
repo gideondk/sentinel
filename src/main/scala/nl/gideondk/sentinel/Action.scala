@@ -6,33 +6,50 @@ import scalaz.stream._
 
 trait Action
 
-trait TransmitterAction[Evt, Cmd] extends Action
-trait ReceiverAction extends Action
+trait ProducerAction[E, C] extends Action
+trait ConsumerAction extends Action
 
-object TransmitterAction {
-  trait Reaction[Evt, Cmd] extends TransmitterAction[Evt, Cmd]
-  trait StreamReaction[Evt, Cmd] extends Reaction[Evt, Cmd]
+object ProducerAction {
+  trait Reaction[E, C] extends ProducerAction[E, C]
+  trait StreamReaction[E, C] extends Reaction[E, C]
 
-  case class Signal[Evt, Cmd](f: Evt ⇒ Future[Cmd]) extends Reaction[Evt, Cmd]
+  trait Signal[E, C] extends Reaction[E, C] {
+    def f: E ⇒ Future[C]
+  }
 
-  case class ConsumeStream[Evt, Cmd](f: Evt ⇒ Process[Future, Evt] ⇒ Future[Cmd]) extends StreamReaction[Evt, Cmd]
+  object Signal {
+    def apply[E, C](fun: E ⇒ Future[C]): Signal[E, C] = new Signal[E, C] { val f = fun }
+  }
 
-  case class ProduceStream[Evt, Cmd](f: Evt ⇒ Future[Process[Future, Cmd]]) extends StreamReaction[Evt, Cmd]
+  trait ConsumeStream[E, C] extends StreamReaction[E, C] {
+    def f: E ⇒ Process[Future, E] ⇒ Future[C]
+  }
 
-  case class ReactToStream[Evt, Cmd](f: Evt ⇒ Future[Channel[Future, Evt, Cmd]]) extends StreamReaction[Evt, Cmd]
+  object ConsumeStream {
+    def apply[E, C](fun: E ⇒ Process[Future, E] ⇒ Future[C]): ConsumeStream[E, C] = new ConsumeStream[E, C] { val f = fun }
+  }
+
+  trait ProduceStream[E, C] extends StreamReaction[E, C] {
+    def f: E ⇒ Future[Process[Future, C]]
+  }
+
+  object ProduceStream {
+    def apply[E, C](fun: E ⇒ Future[Process[Future, C]]): ProduceStream[E, C] = new ProduceStream[E, C] { val f = fun }
+  }
+
 }
 
-case class TransmitterActionAndData[Evt, Cmd](action: TransmitterAction[Evt, Cmd], data: Evt)
+case class ProducerActionAndData[Evt, Cmd](action: ProducerAction[Evt, Cmd], data: Evt)
 
-object ReceiverAction {
-  case object AcceptSignal extends ReceiverAction
-  case object AcceptError extends ReceiverAction
+object ConsumerAction {
+  case object AcceptSignal extends ConsumerAction
+  case object AcceptError extends ConsumerAction
 
-  case object ConsumeStreamChunk extends ReceiverAction
-  case object EndStream extends ReceiverAction
-  case object ConsumeChunkAndEndStream extends ReceiverAction
+  case object ConsumeStreamChunk extends ConsumerAction
+  case object EndStream extends ConsumerAction
+  case object ConsumeChunkAndEndStream extends ConsumerAction
 
-  case object Ignore extends ReceiverAction
+  case object Ignore extends ConsumerAction
 }
 
-case class ReceiverActionAndData[Evt](action: ReceiverAction, data: Evt)
+case class ConsumerActionAndData[Evt](action: ConsumerAction, data: Evt)
