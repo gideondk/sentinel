@@ -3,7 +3,8 @@ package nl.gideondk.sentinel
 import scala.concurrent.{ Future, Promise }
 
 import akka.actor.ActorRef
-import scalaz.stream._
+
+import play.api.libs.iteratee._
 
 trait Registration[Evt, A] {
   def promise: Promise[A]
@@ -11,8 +12,7 @@ trait Registration[Evt, A] {
 
 object Registration {
   case class ReplyRegistration[Evt](promise: Promise[Evt]) extends Registration[Evt, Evt]
-  case class StreamReplyRegistration[Evt](promise: Promise[Process[Future, Evt]]) extends Registration[Evt, Process[Future, Evt]]
-  case class ChannelReplyRegistration[Cmd, Evt](promise: Promise[Channel[Future, Cmd, Evt]]) extends Registration[Evt, Channel[Future, Cmd, Evt]]
+  case class StreamReplyRegistration[Evt](promise: Promise[Enumerator[Evt]]) extends Registration[Evt, Enumerator[Evt]]
 }
 
 trait Command[Cmd, Evt] {
@@ -28,9 +28,7 @@ object Command {
   case class Tell[Cmd, Evt](payload: Cmd, registration: ReplyRegistration[Evt]) extends Command[Cmd, Evt]
 
   case class AskStream[Cmd, Evt](payload: Cmd, registration: StreamReplyRegistration[Evt]) extends Command[Cmd, Evt]
-  case class SendStream[Cmd, Evt](stream: Process[Future, Cmd], registration: ReplyRegistration[Evt]) extends Command[Cmd, Evt]
-
-  case class Conversate[Cmd, Evt](command: Cmd, registration: ChannelReplyRegistration[Cmd, Evt]) extends Command[Cmd, Evt]
+  case class SendStream[Cmd, Evt](stream: Enumerator[Cmd], registration: ReplyRegistration[Evt]) extends Command[Cmd, Evt]
 }
 
 object Reply {

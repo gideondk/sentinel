@@ -2,7 +2,7 @@ package nl.gideondk.sentinel
 
 import scala.concurrent.Future
 
-import scalaz.stream._
+import play.api.libs.iteratee._
 
 trait Action
 
@@ -22,19 +22,19 @@ object ProducerAction {
   }
 
   trait ConsumeStream[E, C] extends StreamReaction[E, C] {
-    def f: E ⇒ Process[Future, E] ⇒ Future[C]
+    def f: E ⇒ Enumerator[E] ⇒ Future[C]
   }
 
   object ConsumeStream {
-    def apply[E, C](fun: E ⇒ Process[Future, E] ⇒ Future[C]): ConsumeStream[E, C] = new ConsumeStream[E, C] { val f = fun }
+    def apply[E, A <: E, B <: E, C](fun: A ⇒ Enumerator[B] ⇒ Future[C]): ConsumeStream[E, C] = new ConsumeStream[E, C] { val f = fun.asInstanceOf[E ⇒ Enumerator[E] ⇒ Future[C]] } // Yikes :/
   }
 
   trait ProduceStream[E, C] extends StreamReaction[E, C] {
-    def f: E ⇒ Future[Process[Future, C]]
+    def f: E ⇒ Future[Enumerator[C]]
   }
 
   object ProduceStream {
-    def apply[E, C](fun: E ⇒ Future[Process[Future, C]]): ProduceStream[E, C] = new ProduceStream[E, C] { val f = fun }
+    def apply[E, C](fun: E ⇒ Future[Enumerator[C]]): ProduceStream[E, C] = new ProduceStream[E, C] { val f = fun }
   }
 
 }

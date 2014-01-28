@@ -11,10 +11,6 @@ import akka.actor.ActorRef
 import scalaz._
 import scalaz.Scalaz._
 import scalaz.effect.IO
-import scalaz.contrib.std.scalaFuture.futureInstance
-
-import scalaz.stream._
-import scalaz.stream.Process._
 
 final case class Task[A](get: IO[Future[Try[A]]]) { self ⇒
   def start: Future[Try[A]] = get.unsafePerformIO
@@ -60,80 +56,12 @@ trait TaskFunctions {
     Task(z.map(_.get).sequence[IO, Future[Try[A]]].map(x ⇒ Future.sequence(x).map(z ⇒ Try(z.filter(_.isSuccess).map(_.get)))))
 }
 
-trait TaskFutureConversions {
-  implicit def taskToFuture[A](t: Task[A]): Future[A] =
-    t.start.flatMap {
-      _ match {
-        case scala.util.Success(s) ⇒ Future.successful(s)
-        case scala.util.Failure(e) ⇒ Future.failed(e)
-      }
-    }
-
-  implicit def taskToFutureNT = new NaturalTransformation[Task, Future] {
-    def apply[A](fa: Task[A]): Future[A] = taskToFuture(fa)
-  }
-
-  implicit def futureToTask[A](f: Future[A]): Task[A] = Task(f)
-
-  implicit def futureToTaskNT = new NaturalTransformation[Future, Task] {
-    def apply[A](fa: Future[A]): Task[A] = futureToTask(fa)
-  }
-
-  implicit def taskProcessToFutureProcess[A](t: Process[Future, A]) = t.translate(futureToTaskNT)
-  implicit def futureProcessToTaskProcess[A](t: Process[Task, A]) = t.translate(taskToFutureNT)
-}
-
-trait TaskScalazConversions {
-  implicit def taskToScalazTask[A](t: ⇒ Task[A]): scalaz.concurrent.Task[A] = {
-    scalaz.concurrent.Task.async {
-      register ⇒
-        t.start.onComplete {
-          case Success(Success(v))  ⇒ register(\/-(v))
-          case Success(Failure(ex)) ⇒ register(-\/(ex))
-          case Failure(ex)          ⇒ register(-\/(ex))
-        }
-    }
-  }
-
-  implicit def taskToScalazTaskNT(implicit ctx: ExecutionContext) = new NaturalTransformation[Task, scalaz.concurrent.Task] {
-    def apply[A](fa: Task[A]): scalaz.concurrent.Task[A] = taskToScalazTask(fa)
-  }
-
-  implicit def scalazTaskToTaskNT(implicit ctx: ExecutionContext) = new NaturalTransformation[scalaz.concurrent.Task, Task] {
-    def apply[A](fa: scalaz.concurrent.Task[A]): Task[A] = scalazTaskToTask(fa)
-  }
-
-  implicit def scalazTaskToTask[T](t: scalaz.concurrent.Task[T]): Task[T] = {
-    val p: Promise[T] = Promise()
-    Task {
-      t.runAsync {
-        case -\/(ex) ⇒ p.failure(ex)
-        case \/-(r)  ⇒ p.success(r)
-      }
-      p.future
-    }
-  }
-
-  implicit def scalazTaskProcessToTaskProcess[A](t: Process[scalaz.concurrent.Task, A]) = t.translate(scalazTaskToTaskNT)
-  implicit def taskProcessToScalazTaskProcess[A](t: Process[Task, A]) = t.translate(taskToScalazTaskNT)
-}
-
-trait TaskImplementation extends TaskFunctions with TaskScalazConversions with TaskFutureConversions {
+trait TaskImplementation extends TaskFunctions {
   implicit def taskMonadInstance = new TaskMonad {}
   implicit def taskComonadInstance(implicit d: Duration) = new TaskComonad {
     override protected val atMost = d
   }
-  implicit def taskCatchableInstance = new TaskCatchable {}
 }
 
 object Task extends TaskImplementation {
-}
-
-trait FutureCatchable extends Catchable[Future] {
-  def fail[A](e: Throwable): Future[A] = Future.failed(e)
-  def attempt[A](t: Future[A]): Future[Throwable \/ A] = Monad[Future].map(t)(x ⇒ \/-(x)).recover { case ex ⇒ -\/(ex) }
-}
-
-object CatchableFuture {
-  implicit def futureCatchableInstance = new FutureCatchable {}
 }

@@ -12,11 +12,7 @@ import akka.routing._
 
 import akka.util.ByteString
 
-import scala.collection.immutable.Queue
-import scalaz.stream._
-
-import nl.gideondk.sentinel._
-import nl.gideondk.sentinel.Registration._
+import play.api.libs.iteratee._
 
 trait Client[Cmd, Evt] {
   import Registration._
@@ -25,11 +21,11 @@ trait Client[Cmd, Evt] {
 
   def ?(command: Cmd)(implicit context: ExecutionContext): Task[Evt] = ask(command)
 
-  def ?->>(command: Cmd)(implicit context: ExecutionContext): Task[Process[Future, Evt]] = askStream(command)
+  def ?->>(command: Cmd)(implicit context: ExecutionContext): Task[Enumerator[Evt]] = askStream(command)
 
-  def ?<<-(command: Cmd, source: Process[Future, Cmd])(implicit context: ExecutionContext): Task[Evt] = sendStream(command, source)
+  def ?<<-(command: Cmd, source: Enumerator[Cmd])(implicit context: ExecutionContext): Task[Evt] = sendStream(command, source)
 
-  def ?<<-(source: Process[Future, Cmd])(implicit context: ExecutionContext): Task[Evt] = sendStream(source)
+  def ?<<-(source: Enumerator[Cmd])(implicit context: ExecutionContext): Task[Evt] = sendStream(source)
 
   def ask(command: Cmd)(implicit context: ExecutionContext): Task[Evt] = Task {
     val promise = Promise[Evt]()
@@ -37,16 +33,16 @@ trait Client[Cmd, Evt] {
     promise.future
   }
 
-  def askStream(command: Cmd)(implicit context: ExecutionContext): Task[Process[Future, Evt]] = Task {
-    val promise = Promise[Process[Future, Evt]]()
+  def askStream(command: Cmd)(implicit context: ExecutionContext): Task[Enumerator[Evt]] = Task {
+    val promise = Promise[Enumerator[Evt]]()
     actor ! Command.AskStream(command, StreamReplyRegistration(promise))
     promise.future
   }
 
-  def sendStream(command: Cmd, source: Process[Future, Cmd]): Task[Evt] =
-    sendStream(Process.emit(command) ++ source)
+  def sendStream(command: Cmd, source: Enumerator[Cmd]): Task[Evt] =
+    sendStream(Enumerator(command) >>> source)
 
-  def sendStream(source: Process[Future, Cmd]): Task[Evt] = Task {
+  def sendStream(source: Enumerator[Cmd]): Task[Evt] = Task {
     val promise = Promise[Evt]()
     actor ! Command.SendStream(source, ReplyRegistration(promise))
     promise.future
@@ -78,7 +74,7 @@ class ClientAntennaManager[Cmd, Evt](address: InetSocketAddress, stages: ⇒ Pip
   override def preStart = tcp ! Tcp.Connect(address)
 
   def connected(antenna: ActorRef): Receive = {
-    case x: nl.gideondk.sentinel.Command[Cmd, Evt] ⇒
+    case x: Command[Cmd, Evt] ⇒
       antenna forward x
   }
 
@@ -94,7 +90,7 @@ class ClientAntennaManager[Cmd, Evt](address: InetSocketAddress, stages: ⇒ Pip
       context watch handler
 
       sender ! Register(handler)
-      antenna ! nl.gideondk.sentinel.Management.RegisterTcpHandler(handler)
+      antenna ! Management.RegisterTcpHandler(handler)
 
       unstashAll()
       context.become(connected(antenna))
@@ -154,7 +150,7 @@ class ClientCore[Cmd, Evt](routerConfig: RouterConfig, description: String, reco
         case None ⇒
       }
 
-    case x: nl.gideondk.sentinel.Command[Cmd, Evt] ⇒
+    case x: Command[Cmd, Evt] ⇒
       coreRouter match {
         case Some(r) ⇒
           r forward x

@@ -4,31 +4,27 @@ import scala.collection.immutable.Queue
 import scala.concurrent._
 import scala.concurrent.duration.DurationInt
 
-import com.typesafe.config.Config
-
 import akka.actor._
-import akka.actor.ActorSystem.Settings
-import akka.dispatch._
 import akka.io.TcpPipelineHandler.{ Init, WithinActorContext }
 import akka.pattern.ask
 import akka.util.Timeout
 
-import scalaz.stream._
-import scalaz.stream.Process._
-
-import scalaz.contrib.std.scalaFuture.futureInstance
+import play.api.libs.iteratee._
 
 import nl.gideondk.sentinel._
-import CatchableFuture._
-import Registration._
 
 object Consumer {
+
   trait StreamConsumerMessage
 
   case object ReadyForStream extends StreamConsumerMessage
+
   case object StartingWithStream extends StreamConsumerMessage
+
   case object AskNextChunk extends StreamConsumerMessage
+
   case object RegisterStreamConsumer extends StreamConsumerMessage
+
   case object ReleaseStreamConsumer extends StreamConsumerMessage
 
   trait ConsumerData[Evt]
@@ -36,11 +32,15 @@ object Consumer {
   case class ConsumerException[Evt](cause: Evt) extends Exception
 
   case class DataChunk[Evt](c: Evt) extends ConsumerData[Evt]
+
   case class ErrorChunk[Evt](c: Evt) extends ConsumerData[Evt]
+
   case class EndOfStream[Evt]() extends ConsumerData[Evt]
+
 }
 
 class Consumer[Cmd, Evt](init: Init[WithinActorContext, Cmd, Evt], streamChunkTimeout: Timeout = Timeout(5 seconds)) extends Actor with ActorLogging {
+
   import Registration._
   import Consumer._
   import ConsumerAction._
@@ -53,7 +53,7 @@ class Consumer[Cmd, Evt](init: Init[WithinActorContext, Cmd, Evt], streamChunkTi
   var registrations = Queue[Registration[Evt, _]]()
   var currentPromise: Option[Promise[Evt]] = None
 
-  var runningSource: Option[Process[Future, Evt]] = None
+  var runningSource: Option[Enumerator[Evt]] = None
 
   def processAction(data: Evt, action: ConsumerAction) = {
       def handleConsumerData(cd: ConsumerData[Evt]) = {
@@ -101,19 +101,16 @@ class Consumer[Cmd, Evt](init: Init[WithinActorContext, Cmd, Evt], streamChunkTi
         }
       }))
       case x: StreamReplyRegistration[Evt] ⇒
-        val resource = actorResource((worker ? RegisterStreamConsumer).map(x ⇒ worker))((x: ActorRef) ⇒ (x ? ReleaseStreamConsumer).mapTo[Unit]) {
-          (x: ActorRef) ⇒
-            (x ? AskNextChunk).mapTo[Promise[ConsumerData[Evt]]].flatMap(_.future).flatMap {
-              _ match {
-                case x: EndOfStream[Evt] ⇒
-                  Future.failed(End)
-                case x: DataChunk[Evt] ⇒
-                  Future.successful(x.c)
-                case x: ErrorChunk[Evt] ⇒
-                  Future.failed(ConsumerException(x.c))
-              }
+        val resource = Enumerator.generateM {
+          (worker ? AskNextChunk).mapTo[Promise[ConsumerData[Evt]]].flatMap(_.future).flatMap {
+            _ match {
+              case x: EndOfStream[Evt] ⇒ (worker ? ReleaseStreamConsumer) flatMap (u ⇒ Future(None))
+              case x: DataChunk[Evt]   ⇒ Future(Some(x.c))
+              case x: ErrorChunk[Evt]  ⇒ (worker ? ReleaseStreamConsumer) flatMap (u ⇒ Future.failed(ConsumerException(x.c)))
             }
+          }
         }
+
         runningSource = Some(resource)
         x.promise success resource
     }
@@ -126,9 +123,6 @@ class Consumer[Cmd, Evt](init: Init[WithinActorContext, Cmd, Evt], streamChunkTi
   }
 
   var behavior: Receive = handleRegistrations orElse {
-    case RegisterStreamConsumer ⇒
-      sender ! StartingWithStream
-
     case ReleaseStreamConsumer ⇒
       runningSource = None
       if (registrations.headOption.isDefined) popAndSetHook

@@ -2,15 +2,12 @@ package nl.gideondk.sentinel.protocols
 
 import scala.concurrent._
 import scala.concurrent.ExecutionContext.Implicits.global
-import scalaz.contrib.std.scalaFuture.futureInstance
 
 import akka.io._
 import akka.util.{ ByteString, ByteStringBuilder }
 
-import scalaz.stream._
-
 import nl.gideondk.sentinel._
-import CatchableFuture._
+import play.api.libs.iteratee._
 
 trait SimpleMessageFormat {
   def payload: String
@@ -93,12 +90,12 @@ object SimpleServerHandler extends DefaultSimpleMessageHandler {
   override def process = super.process orElse {
     case SimpleCommand(PING_PONG_COMMAND, payload) ⇒ ProducerAction.Signal { x: SimpleCommand ⇒ Future(SimpleReply("PONG")) }
     case SimpleCommand(TOTAL_CHUNK_SIZE, payload) ⇒ ProducerAction.ConsumeStream { x: SimpleCommand ⇒
-      s: Process[Future, SimpleStreamChunk] ⇒
-        s pipe process1.fold(0) { (b, a) ⇒ b + a.payload.length } runLastOr (throw new Exception("")) map (x ⇒ SimpleReply(x.toString))
+      s: Enumerator[SimpleStreamChunk] ⇒
+        s |>>> Iteratee.fold(0) { (b, a) ⇒ b + a.payload.length } map (x ⇒ SimpleReply(x.toString))
     }
     case SimpleCommand(GENERATE_NUMBERS, payload) ⇒ ProducerAction.ProduceStream { x: SimpleCommand ⇒
       val count = payload.toInt
-      Future((Process.emitRange(0, count) |> process1.lift(x ⇒ SimpleReply(x.toString))) onComplete (Process.emit(SimpleStreamChunk(""))))
+      Future((Enumerator(List.range(0, count): _*) &> Enumeratee.map(x ⇒ SimpleStreamChunk(x.toString))) >>> Enumerator(SimpleStreamChunk("")))
     }
   }
 }

@@ -1,14 +1,11 @@
 import sbt._
 import Keys._
 
-import org.ensime.sbt.Plugin.Settings.ensimeConfig
-import org.ensime.sbt.util.SExp._
-
 object ApplicationBuild extends Build {
   override lazy val settings = super.settings ++
     Seq(
       name := "sentinel",
-      version := "0.6.0",
+      version := "0.6.0-RC1",
       organization := "nl.gideondk",
       scalaVersion := "2.10.2",
       parallelExecution in Test := false,
@@ -26,14 +23,12 @@ object ApplicationBuild extends Build {
   val appDependencies = Seq(
     "org.scalaz" %% "scalaz-core" % "7.0.3",
     "org.scalaz" %% "scalaz-effect" % "7.0.3",
-    "org.scalaz.stream" %% "scalaz-stream" % "0.2-SNAPSHOT",
 
     "org.scalatest" % "scalatest_2.10" % "1.9.1" % "test",
 
-    "com.typesafe.akka" %% "akka-actor" % "2.2.0",
-    "com.typesafe.akka" %% "akka-testkit" % "2.2.0",
-
-    "org.typelevel" %% "scalaz-contrib-210"        % "0.1.5",
+    "com.typesafe.play" %% "play-iteratees" % "2.2.0",
+    "com.typesafe.akka" % "akka-actor_2.10" % "2.3.0-RC1",
+    "com.typesafe.akka" %% "akka-testkit" % "2.3.0-RC1",
 
     "com.chuusai" % "shapeless" % "2.0.0-M1" cross CrossVersion.full
   )

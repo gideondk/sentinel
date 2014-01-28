@@ -10,21 +10,17 @@ import akka.io.TcpPipelineHandler.{ Init, WithinActorContext }
 import akka.pattern.ask
 import akka.util.Timeout
 
-import scalaz.contrib.std.scalaFuture.futureInstance
-
 import scalaz._
 import Scalaz._
 
-import scalaz.stream.Process
-import scalaz.stream.Process._
+import play.api.libs.iteratee._
 
 import nl.gideondk.sentinel._
-import CatchableFuture._
 
 object Producer {
   trait HandleResult
   case class HandleAsyncResult[Cmd](response: Cmd) extends HandleResult
-  case class HandleStreamResult[Cmd](stream: Process[Future, Cmd]) extends HandleResult
+  case class HandleStreamResult[Cmd](stream: Enumerator[Cmd]) extends HandleResult
 
   trait StreamProducerMessage
   case class StreamProducerChunk[Cmd](c: Cmd) extends StreamProducerMessage
@@ -57,7 +53,7 @@ class Producer[Cmd, Evt](init: Init[WithinActorContext, Cmd, Evt], streamChunkTi
     }
   }
 
-  def produceStreamResult(data: Evt, f: Evt ⇒ Future[Process[Future, Cmd]]) = {
+  def produceStreamResult(data: Evt, f: Evt ⇒ Future[Enumerator[Cmd]]) = {
     val worker = self
     val promise = Promise[HandleResult]()
     responseQueue :+= promise
@@ -82,9 +78,9 @@ class Producer[Cmd, Evt](init: Init[WithinActorContext, Cmd, Evt], streamChunkTi
       case x: ProduceStream[Evt, Cmd] ⇒ initStreamProducer(data, x.f)
 
       case x: ConsumeStream[Evt, Cmd] ⇒
-        val imcomingStreamPromise = Promise[Process[Future, Evt]]()
+        val imcomingStreamPromise = Promise[Enumerator[Evt]]()
         context.parent ! Registration.StreamReplyRegistration(imcomingStreamPromise)
-        imcomingStreamPromise.future >>= ((s) ⇒ initStreamConsumer(data, x.f(_)(s)))
+        imcomingStreamPromise.future flatMap ((s) ⇒ initStreamConsumer(data, x.f(_)(s)))
     }
 
     future.onFailure {
@@ -126,8 +122,9 @@ class Producer[Cmd, Evt](init: Init[WithinActorContext, Cmd, Evt], streamChunkTi
     case x: HandleStreamResult[Cmd] ⇒
       val worker = self
       implicit val timeout = streamChunkTimeout
-      val s = x.stream to actorResource((worker ? StartStreamHandling).map(x ⇒ worker))((a: ActorRef) ⇒ (a ? StreamProducerEnded).map(x ⇒ ()))((a: ActorRef) ⇒ Future { (c: Cmd) ⇒ (self ? StreamProducerChunk(c)).map(x ⇒ ()) })
-      s.run
+
+      (x.stream |>>> Iteratee.foldM(())((a, b) ⇒ (worker ? StreamProducerChunk(b)).map(x ⇒ ()))).flatMap(x ⇒ (worker ? StreamProducerEnded))
+
       context.become(handleRequestAndStreamResponse)
 
     case x: StreamProducerMessage ⇒
@@ -136,8 +133,6 @@ class Producer[Cmd, Evt](init: Init[WithinActorContext, Cmd, Evt], streamChunkTi
   }
 
   def handleRequestAndStreamResponse: Receive = handleRequest orElse {
-    case StartStreamHandling ⇒
-      sender ! ReadyForStream
     case StreamProducerChunk(c) ⇒
       sender ! StreamProducerChunkReceived
       context.parent ! Reply.StreamResponseChunk(c)
