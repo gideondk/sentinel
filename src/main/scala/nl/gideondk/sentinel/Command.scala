@@ -19,6 +19,8 @@ trait Command[Cmd, Evt] {
   def registration: Registration[Evt, _]
 }
 
+trait ServerCommand[Cmd, Evt]
+
 trait Reply[Cmd]
 
 object Command {
@@ -29,6 +31,10 @@ object Command {
 
   case class AskStream[Cmd, Evt](payload: Cmd, registration: StreamReplyRegistration[Evt]) extends Command[Cmd, Evt]
   case class SendStream[Cmd, Evt](stream: Enumerator[Cmd], registration: ReplyRegistration[Evt]) extends Command[Cmd, Evt]
+}
+
+object ServerCommand {
+  case class AskAll[Cmd, Evt](payload: Cmd, promise: Promise[List[Evt]]) extends ServerCommand[Cmd, Evt]
 }
 
 object Reply {
