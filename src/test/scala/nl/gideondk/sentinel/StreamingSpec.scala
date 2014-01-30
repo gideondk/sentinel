@@ -23,7 +23,7 @@ class StreamingSpec extends WordSpec with ShouldMatchers {
 
   implicit val duration = Duration(5, SECONDS)
 
-  def client(portNumber: Int)(implicit system: ActorSystem) = Client("localhost", portNumber, RandomRouter(16), "Worker", 5 seconds, SimpleMessage.stages, SimpleClientHandler)(system)
+  def client(portNumber: Int)(implicit system: ActorSystem) = Client("localhost", portNumber, RoundRobinRouter(2), "Worker", 5 seconds, SimpleMessage.stages, SimpleClientHandler)(system)
 
   def server(portNumber: Int)(implicit system: ActorSystem) = {
     val s = SentinelServer(portNumber, SimpleServerHandler)(SimpleMessage.stages)(system)
@@ -61,6 +61,38 @@ class StreamingSpec extends WordSpec with ShouldMatchers {
       val result = Await.result(stream |>>> Iteratee.getChunks, 5 seconds)
 
       result.length should equal(count)
+    }
+
+    "be able to receive multiple streams simultaneously from a server" in new TestKitSpec {
+      val portNumber = TestHelpers.portNumber.getAndIncrement()
+      val s = server(portNumber)
+      val c = client(portNumber)
+
+      val count = 500
+      val numberOfActions = 8
+      val actions = Task.sequenceSuccesses(List.fill(numberOfActions)((c ?->> SimpleCommand(GENERATE_NUMBERS, count.toString)).flatMap(x ⇒ Task(x |>>> Iteratee.getChunks))))
+
+      val result = actions.map(_.flatten).copoint
+
+      result.length should equal(count * numberOfActions)
+    }
+
+    "be able to receive send streams simultaneously to a server" in new TestKitSpec {
+      val portNumber = TestHelpers.portNumber.getAndIncrement()
+      val s = server(portNumber)
+      val c = client(portNumber)
+
+      val count = 500
+      val chunks = List.fill(count)(SimpleStreamChunk("ABCDEF")) ++ List(SimpleStreamChunk(""))
+      val action = c ?<<- (SimpleCommand(TOTAL_CHUNK_SIZE, ""), Enumerator(chunks: _*))
+
+      val numberOfActions = 8
+      val actions = Task.sequenceSuccesses(List.fill(numberOfActions)(c ?<<- (SimpleCommand(TOTAL_CHUNK_SIZE, ""), Enumerator(chunks: _*))))
+
+      val localLength = chunks.foldLeft(0)((b, a) ⇒ b + a.payload.length)
+      val result = actions.copoint
+
+      result.map(_.payload.toInt).sum should equal(localLength * numberOfActions)
     }
   }
 }

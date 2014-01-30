@@ -39,7 +39,7 @@ class FullDuplexSpec extends WordSpec with ShouldMatchers {
 
       val responses = Task.sequence(List(action, serverAction))
 
-      val results = responses.run.toOption.get
+      val results = responses.copoint
 
       results.length should equal(2)
       results.distinct.length should equal(1)
@@ -59,7 +59,7 @@ class FullDuplexSpec extends WordSpec with ShouldMatchers {
 
       val combined = Task.sequence(List(actions, serverActions.map(_.flatten), secActions))
 
-      val results = combined.run.get
+      val results = combined.copoint
 
       results(0).length should equal(numberOfRequests)
       results(2).length should equal(numberOfRequests)

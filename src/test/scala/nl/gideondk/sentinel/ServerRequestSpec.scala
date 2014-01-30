@@ -40,7 +40,7 @@ class ServerRequestSpec extends WordSpec with ShouldMatchers {
       Thread.sleep(500)
 
       val action = (s ? SimpleCommand(PING_PONG, ""))
-      val result = action.run.get
+      val result = action.copoint
 
       result should equal(SimpleReply("PONG"))
     }
@@ -55,7 +55,7 @@ class ServerRequestSpec extends WordSpec with ShouldMatchers {
       Thread.sleep(500)
 
       val action = (s ?* SimpleCommand(PING_PONG, ""))
-      val result = action.run.get
+      val result = action.copoint
 
       result.length should equal(1)
     }
@@ -70,7 +70,7 @@ class ServerRequestSpec extends WordSpec with ShouldMatchers {
       Thread.sleep(500)
 
       val action = (s ?** SimpleCommand(PING_PONG, ""))
-      val result = action.run.get
+      val result = action.copoint
 
       result.length should equal(numberOfClients * numberOfConnections)
     }
@@ -84,17 +84,17 @@ class ServerRequestSpec extends WordSpec with ShouldMatchers {
 
       Thread.sleep(500)
 
-      val connectedSockets = (s connectedSockets).run.get
+      val connectedSockets = (s connectedSockets).copoint
       connectedSockets should equal(numberOfClients * numberOfConnections)
 
-      val connectedHosts = (s connectedHosts).run.get
+      val connectedHosts = (s connectedHosts).copoint
       connectedHosts should equal(1)
 
       val toBeKilledActors = clients.splitAt(3)._1.map(_.actor)
       toBeKilledActors.foreach(x ⇒ x ! PoisonPill)
       Thread.sleep(500)
 
-      val stillConnectedSockets = (s connectedSockets).run.get
+      val stillConnectedSockets = (s connectedSockets).copoint
       stillConnectedSockets should equal(2 * numberOfConnections)
     }
   }
