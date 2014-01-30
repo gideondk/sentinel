@@ -73,7 +73,7 @@ The handle incoming events, multiple actions are defined which can be used to im
 
 `AcceptError`: Accept a incoming error message and apply it as a failure on a pending registration
 
-`ConsumeStreamChunk`: Accept a incoming stream chunk and consume add it to the current running stream / Enumerator
+`ConsumeStreamChunk`: Accept a incoming stream chunk and consume add it to the current running stream
 
 `EndStream`: Accept a incoming stream terminator and end the current ongoing stream
 
@@ -132,6 +132,7 @@ import SimpleMessage._
 trait DefaultSimpleMessageHandler extends SentinelResolver[SimpleMessageFormat, SimpleMessageFormat] {
   def process = {
     case SimpleStreamChunk(x) ⇒ if (x.length > 0) ConsumerAction.ConsumeStreamChunk else ConsumerAction.EndStream
+   
     case x: SimpleError       ⇒ ConsumerAction.AcceptError
     case x: SimpleReply       ⇒ ConsumerAction.AcceptSignal
   }
@@ -147,14 +148,17 @@ object SimpleServerHandler extends DefaultSimpleMessageHandler {
 
   override def process = super.process orElse {
     case SimpleCommand(PING_PONG, payload) ⇒ ProducerAction.Signal { x: SimpleCommand ⇒ Future(SimpleReply("PONG")) }
+   
     case SimpleCommand(TOTAL_CHUNK_SIZE, payload) ⇒ ProducerAction.ConsumeStream { x: SimpleCommand ⇒
       s: Enumerator[SimpleStreamChunk] ⇒
         s |>>> Iteratee.fold(0) { (b, a) ⇒ b + a.payload.length } map (x ⇒ SimpleReply(x.toString))
     }
+   
     case SimpleCommand(GENERATE_NUMBERS, payload) ⇒ ProducerAction.ProduceStream { x: SimpleCommand ⇒
       val count = payload.toInt
       Future((Enumerator(List.range(0, count): _*) &> Enumeratee.map(x ⇒ SimpleStreamChunk(x.toString))) >>> Enumerator(SimpleStreamChunk("")))
     }
+   
     case SimpleCommand(ECHO, payload) ⇒ ProducerAction.Signal { x: SimpleCommand ⇒ Future(SimpleReply(x.payload)) }
   }
 }
@@ -180,7 +184,7 @@ You can use the `randomRouting` / `roundRobinRouting` methods depending on the r
 ### Server
 When the stages and resolver are defined, creation of a server is very straight forward: 
 
-``scala
+```scala
 SentinelServer(portNumber, SimpleServerHandler, "Server", SimpleMessage.stages)
 ```
 
@@ -231,7 +235,9 @@ Although functionality will be expanded in the future, it's currently also possi
 The following commands can be used to retrieve information: 
 
 `?`: Sends command to *one* (randomly chosen) connected socket for a answer, resulting in one event.
+
 `?*`: Sends a command to all connected hosts, resulting in a list of events from each host individually.
+
 `?**`: Sends a command to all connected sockets, resulting in a list of events from all connected sockets.
 
 Simple server metrics are available through the `connectedSockets` and `connectedHosts` commands, returning a `Task[Int]` containing the corresponding count.
