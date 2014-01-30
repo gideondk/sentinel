@@ -68,10 +68,11 @@ class PingPongMessageStage extends SymmetricPipelineStage[PipelineContext, Simpl
 object SimpleMessage {
   val stages = new PingPongMessageStage >> new LengthFieldFrame(1000)
 
-  val PING_PONG_COMMAND = 1
+  val PING_PONG = 1
   val TOTAL_CHUNK_SIZE = 2
   val GENERATE_NUMBERS = 3
   val CHUNK_LENGTH = 4
+  val ECHO = 5
 }
 
 import SimpleMessage._
@@ -88,7 +89,7 @@ object SimpleClientHandler extends DefaultSimpleMessageHandler
 object SimpleServerHandler extends DefaultSimpleMessageHandler {
 
   override def process = super.process orElse {
-    case SimpleCommand(PING_PONG_COMMAND, payload) ⇒ ProducerAction.Signal { x: SimpleCommand ⇒ Future(SimpleReply("PONG")) }
+    case SimpleCommand(PING_PONG, payload) ⇒ ProducerAction.Signal { x: SimpleCommand ⇒ Future(SimpleReply("PONG")) }
     case SimpleCommand(TOTAL_CHUNK_SIZE, payload) ⇒ ProducerAction.ConsumeStream { x: SimpleCommand ⇒
       s: Enumerator[SimpleStreamChunk] ⇒
         s |>>> Iteratee.fold(0) { (b, a) ⇒ b + a.payload.length } map (x ⇒ SimpleReply(x.toString))
@@ -97,5 +98,6 @@ object SimpleServerHandler extends DefaultSimpleMessageHandler {
       val count = payload.toInt
       Future((Enumerator(List.range(0, count): _*) &> Enumeratee.map(x ⇒ SimpleStreamChunk(x.toString))) >>> Enumerator(SimpleStreamChunk("")))
     }
+    case SimpleCommand(ECHO, payload) ⇒ ProducerAction.Signal { x: SimpleCommand ⇒ Future(SimpleReply(x.payload)) }
   }
 }

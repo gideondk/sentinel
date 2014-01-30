@@ -123,7 +123,7 @@ class ClientCore[Cmd, Evt](routerConfig: RouterConfig, description: String, reco
     new ClientAntennaManager(address, stages, Resolver)
 
   def routerProto(address: InetSocketAddress) =
-    context.system.actorOf(Props(antennaManagerProto(address)).withRouter(routerConfig).withDispatcher("nl.gideondk.sentinel.sentinel-dispatcher"))
+    context.actorOf(Props(antennaManagerProto(address)).withRouter(routerConfig).withDispatcher("nl.gideondk.sentinel.sentinel-dispatcher"))
 
   override def preStart = {
     self ! InitializeRouter

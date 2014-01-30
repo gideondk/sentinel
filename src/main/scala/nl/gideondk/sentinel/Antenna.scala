@@ -17,6 +17,7 @@ class Antenna[Cmd, Evt](init: Init[WithinActorContext, Cmd, Evt], Resolver: Sent
     val consumer = context.actorOf(Props(new Consumer(init)), name = "resolver")
     val producer = context.actorOf(Props(new Producer(init)).withDispatcher("nl.gideondk.sentinel.sentinel-dispatcher"), name = "producer")
 
+    context watch tcpHandler
     context watch producer
     context watch consumer
 

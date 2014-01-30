@@ -21,6 +21,8 @@ trait Command[Cmd, Evt] {
 
 trait ServerCommand[Cmd, Evt]
 
+trait ServerMetric
+
 trait Reply[Cmd]
 
 object Command {
@@ -35,6 +37,13 @@ object Command {
 
 object ServerCommand {
   case class AskAll[Cmd, Evt](payload: Cmd, promise: Promise[List[Evt]]) extends ServerCommand[Cmd, Evt]
+  case class AskAllHosts[Cmd, Evt](payload: Cmd, promise: Promise[List[Evt]]) extends ServerCommand[Cmd, Evt]
+  case class AskAny[Cmd, Evt](payload: Cmd, promise: Promise[Evt]) extends ServerCommand[Cmd, Evt]
+}
+
+object ServerMetric {
+  case object ConnectedSockets extends ServerMetric
+  case object ConnectedHosts extends ServerMetric
 }
 
 object Reply {

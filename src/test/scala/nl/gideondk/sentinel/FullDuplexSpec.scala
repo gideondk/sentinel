@@ -20,7 +20,7 @@ class FullDuplexSpec extends WordSpec with ShouldMatchers {
 
   implicit val duration = Duration(25, SECONDS)
 
-  def client(portNumber: Int)(implicit system: ActorSystem) = Client("localhost", portNumber, RandomRouter(16), "Worker", 5 seconds, SimpleMessage.stages, SimpleServerHandler)(system)
+  def client(portNumber: Int)(implicit system: ActorSystem) = Client("localhost", portNumber, RandomRouter(1), "Worker", 5 seconds, SimpleMessage.stages, SimpleServerHandler)(system)
 
   def server(portNumber: Int)(implicit system: ActorSystem) = {
     val s = SentinelServer(portNumber, SimpleServerHandler)(SimpleMessage.stages)(system)
@@ -34,13 +34,15 @@ class FullDuplexSpec extends WordSpec with ShouldMatchers {
       val s = server(portNumber)
       val c = client(portNumber)
 
-      val action = c ? SimpleCommand(PING_PONG_COMMAND, "")
-      val serverAction = (s ?* SimpleCommand(PING_PONG_COMMAND, "")).map(_.head)
+      val action = c ? SimpleCommand(PING_PONG, "")
+      val serverAction = (s ?* SimpleCommand(PING_PONG, "")).map(_.head)
 
       val responses = Task.sequence(List(action, serverAction))
 
       val results = responses.run.toOption.get
-      results.length == 2 && results.distinct.length == 1
+
+      results.length should equal(2)
+      results.distinct.length should equal(1)
     }
 
     "be able to exchange multiple requests simultaneously" in new TestKitSpec {
@@ -51,15 +53,17 @@ class FullDuplexSpec extends WordSpec with ShouldMatchers {
 
       val numberOfRequests = 1000
 
-      val actions = Task.sequenceSuccesses(List.fill(numberOfRequests)(c ? SimpleCommand(PING_PONG_COMMAND, "")))
-      val secActions = Task.sequenceSuccesses(List.fill(numberOfRequests)(secC ? SimpleCommand(PING_PONG_COMMAND, "")))
-      val serverActions = Task.sequenceSuccesses(List.fill(numberOfRequests)((s ?* SimpleCommand(PING_PONG_COMMAND, ""))))
+      val actions = Task.sequenceSuccesses(List.fill(numberOfRequests)(c ? SimpleCommand(PING_PONG, "")))
+      val secActions = Task.sequenceSuccesses(List.fill(numberOfRequests)(secC ? SimpleCommand(PING_PONG, "")))
+      val serverActions = Task.sequenceSuccesses(List.fill(numberOfRequests)((s ?** SimpleCommand(PING_PONG, ""))))
 
       val combined = Task.sequence(List(actions, serverActions.map(_.flatten), secActions))
 
       val results = combined.run.get
 
-      results(0).length == numberOfRequests && results(1).length == numberOfRequests * 2 && results(2).length == numberOfRequests
+      results(0).length should equal(numberOfRequests)
+      results(2).length should equal(numberOfRequests)
+      results(1).length should equal(numberOfRequests * 2)
     }
   }
 }

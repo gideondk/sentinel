@@ -3,7 +3,7 @@ package nl.gideondk.sentinel
 import scala.concurrent.ExecutionContext.Implicits.global
 
 import org.scalatest.WordSpec
-import org.scalatest.matchers.ShouldMatchers
+import org.scalatest.matchers.{ Matchers, ShouldMatchers }
 
 import scalaz._
 import Scalaz._
@@ -17,8 +17,7 @@ import play.api.libs.iteratee._
 
 import protocols._
 
-
-class RequestResponseSpec extends WordSpec with ShouldMatchers {
+class RequestResponseSpec extends WordSpec with Matchers {
 
   import SimpleMessage._
 
@@ -38,34 +37,10 @@ class RequestResponseSpec extends WordSpec with ShouldMatchers {
       val s = server(portNumber)
       val c = client(portNumber)
 
-      val action = c ? SimpleCommand(PING_PONG_COMMAND, "")
-      action.run.isSuccess
-    }
+      val action = c ? SimpleCommand(PING_PONG, "")
+      val result = action.run
 
-    "be able to send a stream to a server" in new TestKitSpec {
-      val portNumber = TestHelpers.portNumber.getAndIncrement()
-      val s = server(portNumber)
-      val c = client(portNumber)
-
-      val count = 500
-      val chunks = List.fill(count)(SimpleStreamChunk("ABCDEF")) ++ List(SimpleStreamChunk(""))
-      val action = c ?<<-(SimpleCommand(TOTAL_CHUNK_SIZE, ""), Enumerator(chunks: _*))
-
-      val localLength = chunks.foldLeft(0)((b, a) ⇒ b + a.payload.length)
-      action.run.isSuccess && action.run.toOption.get.payload.toInt == localLength
-    }
-
-    "be able to receive streams from a server" in new TestKitSpec {
-      val portNumber = TestHelpers.portNumber.getAndIncrement()
-      val s = server(portNumber)
-      val c = client(portNumber)
-
-      val count = 500
-      val action = c ?->> SimpleCommand(GENERATE_NUMBERS, count.toString)
-
-      val stream = action.copoint
-      val result = Await.result(stream |>>> Iteratee.getChunks, 5 seconds)
-      result.length == count
+      result.isSuccess should equal(true)
     }
 
     "be able to requests multiple requests from a server" in new TestKitSpec {
@@ -75,9 +50,25 @@ class RequestResponseSpec extends WordSpec with ShouldMatchers {
 
       val numberOfRequests = 20 * 1000
 
-      val action = Task.sequenceSuccesses(List.fill(numberOfRequests)(c ? SimpleCommand(PING_PONG_COMMAND, "")))
+      val action = Task.sequenceSuccesses(List.fill(numberOfRequests)(c ? SimpleCommand(PING_PONG, "")))
       val result = action.run
-      result.isSuccess && result.get.length == numberOfRequests
+
+      result.get.length should equal(numberOfRequests)
+      result.isSuccess should equal(true)
+    }
+
+    "be able to receive responses in correct order" in new TestKitSpec {
+      val portNumber = TestHelpers.portNumber.getAndIncrement()
+      val s = server(portNumber)
+      val c = client(portNumber)
+
+      val numberOfRequests = 20 * 1000
+
+      val items = List.range(0, numberOfRequests).map(_.toString)
+      val action = Task.sequenceSuccesses(items.map(x ⇒ (c ? SimpleCommand(ECHO, x))))
+      val result = action.run.get
+
+      result.map(_.payload) should equal(items)
     }
   }
 }

@@ -5,22 +5,46 @@ import java.net.InetSocketAddress
 import akka.actor._
 import akka.io._
 import akka.io.Tcp._
-import akka.util.ByteString
+import akka.util.{ Timeout, ByteString }
 
-import nl.gideondk.sentinel._
-import nl.gideondk.sentinel.SentinelResolver
 import scala.concurrent.{ Future, Promise, ExecutionContext }
-import play.api.libs.iteratee.Enumerator
+import scala.util.Random
+
+import akka.pattern.ask
 
 trait Server[Cmd, Evt] {
   def actor: ActorRef
 
-  def ?*(command: Cmd)(implicit context: ExecutionContext): Task[List[Evt]] = askMany(command)
+  def ?**(command: Cmd)(implicit context: ExecutionContext): Task[List[Evt]] = askAll(command)
 
-  def askMany(command: Cmd)(implicit context: ExecutionContext): Task[List[Evt]] = Task {
+  def ?*(command: Cmd)(implicit context: ExecutionContext): Task[List[Evt]] = askAllHosts(command)
+
+  def ?(command: Cmd)(implicit context: ExecutionContext): Task[Evt] = askAny(command)
+
+  def askAll(command: Cmd)(implicit context: ExecutionContext): Task[List[Evt]] = Task {
     val promise = Promise[List[Evt]]()
     actor ! ServerCommand.AskAll(command, promise)
     promise.future
+  }
+
+  def askAllHosts(command: Cmd)(implicit context: ExecutionContext): Task[List[Evt]] = Task {
+    val promise = Promise[List[Evt]]()
+    actor ! ServerCommand.AskAllHosts(command, promise)
+    promise.future
+  }
+
+  def askAny(command: Cmd)(implicit context: ExecutionContext): Task[Evt] = Task {
+    val promise = Promise[Evt]()
+    actor ! ServerCommand.AskAny(command, promise)
+    promise.future
+  }
+
+  def connectedSockets(implicit timeout: Timeout): Task[Int] = Task {
+    (actor ? ServerMetric.ConnectedSockets).mapTo[Int]
+  }
+
+  def connectedHosts(implicit timeout: Timeout): Task[Int] = Task {
+    (actor ? ServerMetric.ConnectedHosts).mapTo[Int]
   }
 }
 
@@ -36,22 +60,52 @@ class ServerCore[Cmd, Evt](port: Int, description: String, stages: ⇒ PipelineS
   val tcp = akka.io.IO(Tcp)(context.system)
   val address = new InetSocketAddress(port)
 
-  var connections = List[ActorRef]()
+  var connections = Map[String, List[ActorRef]]()
 
   override def preStart = {
     tcp ! Bind(self, address)
   }
 
   def receiveCommands: Receive = {
-    case x: ServerCommand.AskAll[Cmd, Evt] ⇒
-      val futures = Task.sequence(connections.map(wrapAtenna).map(_ ? x.payload)).start.flatMap {
+    case x: ServerCommand.AskAll[Cmd, Evt] if connections.values.toList.length > 0 ⇒
+      val futures = Task.sequence(connections.values.toList.flatten.map(wrapAtenna).map(_ ? x.payload)).start.flatMap {
         case scala.util.Success(s) ⇒ Future.successful(s)
         case scala.util.Failure(e) ⇒ Future.failed(e)
       }
       x.promise.completeWith(futures)
+
+    case x: ServerCommand.AskAllHosts[Cmd, Evt] if connections.values.toList.length > 0 ⇒
+      val futures = Task.sequence(connections.values.toList.map(x ⇒ Random.shuffle(x.toList).head).map(wrapAtenna).map(_ ? x.payload)).start.flatMap {
+        case scala.util.Success(s) ⇒ Future.successful(s)
+        case scala.util.Failure(e) ⇒ Future.failed(e)
+      }
+      x.promise.completeWith(futures)
+
+    case x: ServerCommand.AskAny[Cmd, Evt] if connections.values.toList.length > 0 ⇒
+      val future = (wrapAtenna(Random.shuffle(connections.values.toList.flatten).head) ? x.payload).start.flatMap {
+        case scala.util.Success(s) ⇒ Future.successful(s)
+        case scala.util.Failure(e) ⇒ Future.failed(e)
+      }
+      x.promise.completeWith(future)
+
+    case ServerMetric.ConnectedSockets ⇒
+      sender ! connections.values.flatten.toList.length
+
+    case ServerMetric.ConnectedHosts ⇒
+      sender ! connections.keys.toList.length
   }
 
   def receive = receiveCommands orElse {
+    case x: Terminated ⇒
+      val antenna = x.getActor
+      connections = connections.foldLeft(Map[String, List[ActorRef]]()) {
+        case (c, i) ⇒
+          i._2.contains(antenna) match {
+            case true  ⇒ if (i._2.length == 1) c else c + (i._1 -> i._2.filter(_ != antenna))
+            case false ⇒ c + i
+          }
+      }
+
     case Bound ⇒
       log.debug(description + " bound to " + address)
 
@@ -71,7 +125,10 @@ class ServerCore[Cmd, Evt](port: Int, description: String, stages: ⇒ PipelineS
       val connection = sender
 
       val antenna = context.actorOf(Props(new Antenna(init, resolver)).withDispatcher("nl.gideondk.sentinel.sentinel-dispatcher"))
-      connections :+= antenna
+      context.watch(antenna)
+
+      val currentAtennas = connections.get(remoteAddr.getHostName).getOrElse(List[ActorRef]())
+      connections = connections + (remoteAddr.getHostName -> (currentAtennas ++ List(antenna)))
 
       val tcpHandler = context.actorOf(TcpPipelineHandler.props(init, connection, antenna).withDeploy(Deploy.local))
 
