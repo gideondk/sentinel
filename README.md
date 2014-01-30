@@ -20,15 +20,11 @@ In overall, treat Sentinel as pre-release alpha software.
 
 **Currently available in Sentinel:**
 
-* Easy creation of reactive TCP servers / clients;
-* Easy initialization of servers and clients for default or custom router worker strategies;
+* Easy initialization of TCP servers and clients for default or custom router worker strategies;
 * Supervision (and restart / reconnection functionality) on clients for a defined number of workers;
-* Default implementation for flow control;
 * Sequencing and continuing multiple client operations using `Tasks`;
-* Handling of read / write interests;
-* Pluggable response handlers;
 * Streaming requests and responses (currently) based on Play Iteratees;
-* Direct server to client communication through a symmetrical design.
+* Direct server to client communication through symmetrical signal handling design.
 
 The following is currently missing in Sentinel, but will be added soon:
 
@@ -36,7 +32,7 @@ The following is currently missing in Sentinel, but will be added soon:
 * A far more solid test suite;
 * Better error handling and recovery;
 * Default functionality for callback based protocols;
-* More examples, and overall awesomeness…
+* Streaming server to client communication.
 
 ## Installation
 You can install Sentinel through source (by publishing it into your local Ivy repository):
@@ -65,10 +61,10 @@ Both clients as servers share the same antenna construction, which results in a 
 
 Once, for instance, a command is sent to a client (for a response from the connected server), the payload is sent to the opposing host and a reply-registration is set within the consumer part of the antenna. This registration and accompanying promise is completed with the consequential response from the server.
 
-### Actions
+## Actions
 The handle incoming events, multiple actions are defined which can be used to implement logic on top of the used protocol. Actions are split into consumer actions and producers actions, which make a antenna able to: 
 
-#### Consumer Actions
+### Consumer Actions
 `AcceptSignal`: Accept and consume a incoming signal and apply it on a pending registration
 
 `AcceptError`: Accept a incoming error message and apply it as a failure on a pending registration
@@ -81,14 +77,14 @@ The handle incoming events, multiple actions are defined which can be used to im
 
 `Ignore`: Ignores the current received signal
 
-#### Producer Actions
+### Producer Actions
 `Signal`: Responds to the incoming signal with a new (async) signal
 
 `CosumeStream`: Starts consuming the stream until a `EndStream` is received
 
 `ProduceStream`: Produces a stream (Enumerator) for the requesting hosts
 
-### Synchronicity
+## Synchronicity
 Normally, Sentinel clients connect to servers through multiple sockets to increase parallel performance on top of the synchronous nature of *TCP* sockets. Producers and consumers implement a state machine to correctly respond to running incoming and outgoing streams, handling messages which don't impose treats to the message flow and stashing messages which could leak into the running streams. 
 
 Because of the synchronous nature of the underlying semantics, you have to handle each receiving signal in a appropriate way. Not handling all signals correctly could result in values ending up in incorrect registrations etc.
@@ -190,8 +186,7 @@ SentinelServer(portNumber, SimpleServerHandler, "Server", SimpleMessage.stages)
 
 This will automatically start the server with the corresponding stages and handler, in the future, separate functionality for starting, restarting and stopping services will be available.
 
-## Usage
-### Client 
+## Client usage
 
 Once a client and / or server has been set up, the `?` method can be used on the client to send a command to the connected server. Results are wrapped into a `Task` containing the type `Evt` defined in the incoming stage of the client.
 
@@ -229,7 +224,7 @@ c ?->> SimpleCommand(GENERATE_NUMBERS, count.toString)
 res0: Task[Enumerator[SimpleCommand]]
 ```
 
-### Server
+## Server usage
 Although functionality will be expanded in the future, it's currently also possible to send requests from the server to the connected clients. This can be used for retrieval of client information on servers request, but could also be used as a retrieval pattern where clients are dormant after request, but respond to requests when necessary (retrieving sensor info per example). 
 
 The following commands can be used to retrieve information: 
