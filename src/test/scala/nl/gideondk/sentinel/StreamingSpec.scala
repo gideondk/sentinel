@@ -23,7 +23,7 @@ class StreamingSpec extends WordSpec with ShouldMatchers {
 
   implicit val duration = Duration(5, SECONDS)
 
-  def client(portNumber: Int)(implicit system: ActorSystem) = Client("localhost", portNumber, RoundRobinRouter(2), "Worker", 5 seconds, SimpleMessage.stages, SimpleClientHandler)(system)
+  def client(portNumber: Int)(implicit system: ActorSystem) = Client.randomRouting("localhost", portNumber, 2, "Worker", SimpleMessage.stages, 5 seconds, SimpleServerHandler)(system)
 
   def server(portNumber: Int)(implicit system: ActorSystem) = {
     val s = SentinelServer(portNumber, SimpleServerHandler)(SimpleMessage.stages)(system)

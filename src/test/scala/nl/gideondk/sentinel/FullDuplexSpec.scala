@@ -20,7 +20,7 @@ class FullDuplexSpec extends WordSpec with ShouldMatchers {
 
   implicit val duration = Duration(25, SECONDS)
 
-  def client(portNumber: Int)(implicit system: ActorSystem) = Client("localhost", portNumber, RandomRouter(1), "Worker", 5 seconds, SimpleMessage.stages, SimpleServerHandler)(system)
+  def client(portNumber: Int)(implicit system: ActorSystem) = Client.randomRouting("localhost", portNumber, 1, "Worker", SimpleMessage.stages, 5 seconds, SimpleServerHandler)(system)
 
   def server(portNumber: Int)(implicit system: ActorSystem) = {
     val s = SentinelServer(portNumber, SimpleServerHandler)(SimpleMessage.stages)(system)
