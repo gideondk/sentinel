@@ -1,4 +1,4 @@
 language: scala
 scala:
   - 2.10.2
-script: "sbt ++$TRAVIS_SCALA_VERSION compile"
+script: "sbt ++$TRAVIS_SCALA_VERSION test"
