@@ -26,7 +26,7 @@ class RequestResponseSpec extends WordSpec with Matchers {
   def client(portNumber: Int)(implicit system: ActorSystem) = Client.randomRouting("localhost", portNumber, 16, "Worker", SimpleMessage.stages, 5 seconds, SimpleServerHandler)(system)
 
   def server(portNumber: Int)(implicit system: ActorSystem) = {
-    val s = SentinelServer(portNumber, SimpleServerHandler,stages = SimpleMessage.stages)(system)
+    val s = SentinelServer(portNumber, SimpleServerHandler, stages = SimpleMessage.stages)(system)
     Thread.sleep(100)
     s
   }
