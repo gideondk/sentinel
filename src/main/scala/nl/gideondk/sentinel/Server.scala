@@ -49,7 +49,7 @@ trait Server[Cmd, Evt] {
 }
 
 class ServerCore[Cmd, Evt](port: Int, description: String, stages: ⇒ PipelineStage[PipelineContext, Cmd, ByteString, Evt, ByteString],
-                           resolver: SentinelResolver[Evt, Cmd], workerDescription: String = "Sentinel Client Worker")(lowBytes: Long, highBytes: Long, maxBufferSize: Long) extends Actor with ActorLogging {
+                           resolver: Resolver[Evt, Cmd], workerDescription: String = "Sentinel Client Worker")(lowBytes: Long, highBytes: Long, maxBufferSize: Long) extends Actor with ActorLogging {
 
   import context.dispatcher
 
@@ -68,24 +68,15 @@ class ServerCore[Cmd, Evt](port: Int, description: String, stages: ⇒ PipelineS
 
   def receiveCommands: Receive = {
     case x: ServerCommand.AskAll[Cmd, Evt] if connections.values.toList.length > 0 ⇒
-      val futures = Task.sequence(connections.values.toList.flatten.map(wrapAtenna).map(_ ? x.payload)).start.flatMap {
-        case scala.util.Success(s) ⇒ Future.successful(s)
-        case scala.util.Failure(e) ⇒ Future.failed(e)
-      }
+      val futures = Task.sequence(connections.values.toList.flatten.map(wrapAtenna).map(_ ? x.payload)).start
       x.promise.completeWith(futures)
 
     case x: ServerCommand.AskAllHosts[Cmd, Evt] if connections.values.toList.length > 0 ⇒
-      val futures = Task.sequence(connections.values.toList.map(x ⇒ Random.shuffle(x.toList).head).map(wrapAtenna).map(_ ? x.payload)).start.flatMap {
-        case scala.util.Success(s) ⇒ Future.successful(s)
-        case scala.util.Failure(e) ⇒ Future.failed(e)
-      }
+      val futures = Task.sequence(connections.values.toList.map(x ⇒ Random.shuffle(x.toList).head).map(wrapAtenna).map(_ ? x.payload)).start
       x.promise.completeWith(futures)
 
     case x: ServerCommand.AskAny[Cmd, Evt] if connections.values.toList.length > 0 ⇒
-      val future = (wrapAtenna(Random.shuffle(connections.values.toList.flatten).head) ? x.payload).start.flatMap {
-        case scala.util.Success(s) ⇒ Future.successful(s)
-        case scala.util.Failure(e) ⇒ Future.failed(e)
-      }
+      val future = (wrapAtenna(Random.shuffle(connections.values.toList.flatten).head) ? x.payload).start
       x.promise.completeWith(future)
 
     case ServerMetric.ConnectedSockets ⇒
@@ -137,8 +128,8 @@ class ServerCore[Cmd, Evt](port: Int, description: String, stages: ⇒ PipelineS
   }
 }
 
-object SentinelServer {
-  def apply[Evt, Cmd](serverPort: Int, resolver: SentinelResolver[Evt, Cmd], description: String = "Sentinel Server", stages: ⇒ PipelineStage[PipelineContext, Cmd, ByteString, Evt, ByteString], lowBytes: Long = 100L, highBytes: Long = 50 * 1024L, maxBufferSize: Long = 1000L * 1024L)(implicit system: ActorSystem) = {
+object Server {
+  def apply[Evt, Cmd](serverPort: Int, resolver: Resolver[Evt, Cmd], description: String = "Sentinel Server", stages: ⇒ PipelineStage[PipelineContext, Cmd, ByteString, Evt, ByteString], lowBytes: Long = 100L, highBytes: Long = 50 * 1024L, maxBufferSize: Long = 1000L * 1024L)(implicit system: ActorSystem) = {
     new Server[Evt, Cmd] {
       val actor = system.actorOf(Props(new ServerCore(serverPort, description, stages, resolver)(lowBytes, highBytes, maxBufferSize)).withDispatcher("nl.gideondk.sentinel.sentinel-dispatcher"), name = "sentinel-server-" + java.util.UUID.randomUUID.toString)
     }

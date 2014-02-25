@@ -202,6 +202,8 @@ Use `run` to expose the Future, or use `start(d: Duration)` to perform IO and wa
 This bare bone approach to sending / receiving messages is focussed on the idea that a higher-level API on top of Sentinel is responsible to make client usage more comfortable. 
 
 ### Streamed requests / responses
+Sentinels structure for streaming requests and responses works best with protocols which somehow *pad* chunks and terminators. As the resolver has to be sure whether to consume a stream chunk and when to end the incoming stream, length based header structures are difficult to implement. Unstructured binary stream chunks can however be matched by protocol implementations if they are fundamentally different then other chunks, simply ignoring initial length headers and for instance breaking on *zero terminators* could be a way to implement *non-padded* stream chunks.
+
 #### Sending 
 It's possible to stream content towards Sentinel clients by using the the `?<<-` command, expecting the command to be send to the server, accompanied by the actual stream:
 

@@ -9,7 +9,7 @@ import akka.io.TcpPipelineHandler.{ Init, WithinActorContext }
 
 import processors._
 
-class Antenna[Cmd, Evt](init: Init[WithinActorContext, Cmd, Evt], Resolver: SentinelResolver[Evt, Cmd]) extends Actor with ActorLogging with Stash {
+class Antenna[Cmd, Evt](init: Init[WithinActorContext, Cmd, Evt], Resolver: Resolver[Evt, Cmd]) extends Actor with ActorLogging with Stash {
 
   import context.dispatcher
 

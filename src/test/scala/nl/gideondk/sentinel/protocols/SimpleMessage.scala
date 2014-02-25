@@ -76,7 +76,7 @@ object SimpleMessage {
 }
 
 import SimpleMessage._
-trait DefaultSimpleMessageHandler extends SentinelResolver[SimpleMessageFormat, SimpleMessageFormat] {
+trait DefaultSimpleMessageHandler extends Resolver[SimpleMessageFormat, SimpleMessageFormat] {
   def process = {
     case SimpleStreamChunk(x) ⇒ if (x.length > 0) ConsumerAction.ConsumeStreamChunk else ConsumerAction.EndStream
     case x: SimpleError       ⇒ ConsumerAction.AcceptError

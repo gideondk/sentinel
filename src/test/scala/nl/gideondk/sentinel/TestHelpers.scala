@@ -14,8 +14,6 @@ import akka.routing.RoundRobinRouter
 import akka.util.ByteString
 
 import Task._
-import server._
-import client._
 
 import scalaz._
 import Scalaz._

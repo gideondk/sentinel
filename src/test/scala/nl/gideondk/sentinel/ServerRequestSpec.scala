@@ -27,7 +27,7 @@ class ServerRequestSpec extends WordSpec with ShouldMatchers {
   def client(portNumber: Int)(implicit system: ActorSystem) = Client.randomRouting("localhost", portNumber, numberOfConnections, "Worker", SimpleMessage.stages, 5 seconds, SimpleServerHandler)(system)
 
   def server(portNumber: Int)(implicit system: ActorSystem) = {
-    val s = SentinelServer(portNumber, SimpleServerHandler, stages = SimpleMessage.stages)(system)
+    val s = Server(portNumber, SimpleServerHandler, stages = SimpleMessage.stages)(system)
     Thread.sleep(100)
     s
   }
