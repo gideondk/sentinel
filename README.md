@@ -121,11 +121,11 @@ class PingPongMessageStage extends SymmetricPipelineStage[PipelineContext,
 ### Resolver
 The default resolver for a client is one that automatically accepts all signals. This default behaviour makes it able to handle basic protocols asynchronously without defining a custom resolver on the client side.
 
-It's easy to extend the behaviour on the client side for receiving stream responses by defining a custom `SentinelResolver`:
+It's easy to extend the behaviour on the client side for receiving stream responses by defining a custom `Resolver`:
 
 ```scala
 import SimpleMessage._
-trait DefaultSimpleMessageHandler extends SentinelResolver[SimpleMessageFormat, SimpleMessageFormat] {
+trait DefaultSimpleMessageHandler extends Resolver[SimpleMessageFormat, SimpleMessageFormat] {
   def process = {
     case SimpleStreamChunk(x) ⇒ if (x.length > 0) ConsumerAction.ConsumeStreamChunk else ConsumerAction.EndStream
    
@@ -170,7 +170,7 @@ Like illustrated, the `ProducerAction.Signal` producer action makes it able to r
 After the definition of the pipeline, a client is easily created:
 
 ```scala
-SentinelClient.randomRouting("localhost", 9999, 4, "Ping Client", stages = stages, resolver = resolver)
+Client.randomRouting("localhost", 9999, 4, "Ping Client", stages = stages, resolver = resolver)
 ```
 
 Defining the host and port where the client should connect to, the amount of workers used to handle commands / events, description of the client and the earlier defined context, stages and resolver (for the complete list of parameters, check the code for the moment). 
@@ -181,7 +181,7 @@ You can use the `randomRouting` / `roundRobinRouting` methods depending on the r
 When the stages and resolver are defined, creation of a server is very straight forward: 
 
 ```scala
-SentinelServer(portNumber, SimpleServerHandler, "Server", SimpleMessage.stages)
+Server(portNumber, SimpleServerHandler, "Server", SimpleMessage.stages)
 ```
 
 This will automatically start the server with the corresponding stages and handler, in the future, separate functionality for starting, restarting and stopping services will be available.
