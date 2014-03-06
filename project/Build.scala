@@ -29,7 +29,7 @@ object ApplicationBuild extends Build {
 
     "com.typesafe.play" %% "play-iteratees" % "2.2.0",
     "com.typesafe.akka" % "akka-actor_2.10" % "2.3.0-RC4",
-    "com.typesafe.akka" %% "akka-testkit" % "2.3.0-RC4",
+    "com.typesafe.akka" %% "akka-testkit" % "2.3.0-RC4"
   )
 
   lazy val root = Project(id = "sentinel",
