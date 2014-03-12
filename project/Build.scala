@@ -5,7 +5,7 @@ object ApplicationBuild extends Build {
   override lazy val settings = super.settings ++
     Seq(
       name := "sentinel",
-      version := "0.6.0-M3",
+      version := "0.6.0",
       organization := "nl.gideondk",
       scalaVersion := "2.10.2",
       parallelExecution in Test := false,
@@ -28,8 +28,8 @@ object ApplicationBuild extends Build {
     "org.scalatest" % "scalatest_2.10" % "1.9.1" % "test",
 
     "com.typesafe.play" %% "play-iteratees" % "2.2.0",
-    "com.typesafe.akka" % "akka-actor_2.10" % "2.3.0-RC4",
-    "com.typesafe.akka" %% "akka-testkit" % "2.3.0-RC4"
+    "com.typesafe.akka" % "akka-actor_2.10" % "2.3.0",
+    "com.typesafe.akka" %% "akka-testkit" % "2.3.0"
   )
 
   lazy val root = Project(id = "sentinel",
