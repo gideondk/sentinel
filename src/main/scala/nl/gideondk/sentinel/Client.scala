@@ -84,6 +84,10 @@ class ClientAntennaManager[Cmd, Evt](address: InetSocketAddress, stages: ⇒ Pip
   def connected(antenna: ActorRef): Receive = {
     case x: Command[Cmd, Evt] ⇒
       antenna forward x
+
+    case x: Terminated ⇒
+      context.stop(self)
+
   }
 
   def disconnected: Receive = {
@@ -139,21 +143,24 @@ class ClientCore[Cmd, Evt](routerConfig: RouterConfig, description: String, reco
 
   def receive = {
     case x: Client.ConnectToServer ⇒
+      log.debug("Connecting to: " + x.addr)
       if (!addresses.map(_._1).contains(x)) {
         val router = routerProto(x.addr)
         context.watch(router)
         addresses = addresses ++ List(x.addr -> Some(router))
         coreRouter = Some(context.system.actorOf(Props.empty.withRouter(RoundRobinRouter(routees = addresses.map(_._2).flatten))))
+      } else {
+        log.debug("Client is already connected to: " + x.addr)
       }
 
     case Terminated(actor) ⇒
       /* If router died, restart after a period of time */
-      val terminatedRouter = addresses.find(_._2 == actor)
+      val terminatedRouter = addresses.find(_._2 == Some(actor))
       terminatedRouter match {
         case Some(r) ⇒
-          addresses = addresses diff addresses.find(_._2 == actor).toList
+          addresses = addresses diff addresses.find(_._2 == Some(actor)).toList
           coreRouter = Some(context.system.actorOf(Props.empty.withRouter(RoundRobinRouter(routees = addresses.map(_._2).flatten))))
-          log.debug("Router for: " + r._1 + " died, restarting in: " + reconnectDuration.toString())
+          log.error("Router for: " + r._1 + " died, restarting in: " + reconnectDuration.toString())
           context.system.scheduler.scheduleOnce(reconnectDuration, self, Client.ConnectToServer(r._1))
         case None ⇒
       }

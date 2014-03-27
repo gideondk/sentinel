@@ -23,7 +23,7 @@ class RequestResponseSpec extends WordSpec with Matchers {
 
   implicit val duration = Duration(5, SECONDS)
 
-  def client(portNumber: Int)(implicit system: ActorSystem) = Client.randomRouting("localhost", portNumber, 16, "Worker", SimpleMessage.stages, 5 seconds, SimpleServerHandler)(system)
+  def client(portNumber: Int)(implicit system: ActorSystem) = Client.randomRouting("localhost", portNumber, 16, "Worker", SimpleMessage.stages, 0.5 seconds, SimpleServerHandler)(system)
 
   def server(portNumber: Int)(implicit system: ActorSystem) = {
     val s = Server(portNumber, SimpleServerHandler, stages = SimpleMessage.stages)(system)
@@ -69,6 +69,27 @@ class RequestResponseSpec extends WordSpec with Matchers {
       val result = action.run.get
 
       result.map(_.payload) should equal(items)
+    }
+
+    "should automatically reconnect" in new TestKitSpec {
+      val portNumber = TestHelpers.portNumber.getAndIncrement()
+      val s = server(portNumber)
+      val c = client(portNumber)
+      Thread.sleep(500)
+
+      val action = c ? SimpleCommand(PING_PONG, "")
+      val result = action.run
+
+      result.isSuccess should equal(true)
+
+      system.stop(s.actor)
+      Thread.sleep(1000)
+      val ss = server(portNumber)
+
+      val secAction = c ? SimpleCommand(PING_PONG, "")
+      val endResult = secAction.run
+
+      endResult.isSuccess should equal(true)
     }
   }
 }

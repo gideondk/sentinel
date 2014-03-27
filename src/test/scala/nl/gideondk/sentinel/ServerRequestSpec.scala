@@ -24,7 +24,7 @@ class ServerRequestSpec extends WordSpec with ShouldMatchers {
 
   val numberOfConnections = 16
 
-  def client(portNumber: Int)(implicit system: ActorSystem) = Client.randomRouting("localhost", portNumber, numberOfConnections, "Worker", SimpleMessage.stages, 5 seconds, SimpleServerHandler)(system)
+  def client(portNumber: Int)(implicit system: ActorSystem) = Client.randomRouting("localhost", portNumber, numberOfConnections, "Worker", SimpleMessage.stages, 0.5 seconds, SimpleServerHandler)(system)
 
   def server(portNumber: Int)(implicit system: ActorSystem) = {
     val s = Server(portNumber, SimpleServerHandler, stages = SimpleMessage.stages)(system)
