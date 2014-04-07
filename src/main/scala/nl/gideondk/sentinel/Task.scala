@@ -2,6 +2,7 @@ package nl.gideondk.sentinel
 
 import scala.concurrent.Await
 import scala.concurrent.Future
+import scala.concurrent.ExecutionContext
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.duration.Duration
 import scala.util.Try
@@ -17,6 +18,10 @@ final case class Task[A](get: IO[Future[A]]) {
   def run(implicit atMost: Duration): Try[A] = Await.result((start.map(Try(_)) recover {
     case x ⇒ Try(throw x)
   }), atMost)
+
+  def recover[U >: A](pf: PartialFunction[Throwable, U])(implicit executor: ExecutionContext) = get.map(_.recover(pf))
+
+  def recoverWith[U >: T](pf: PartialFunction[Throwable, Future[U]])(implicit executor: ExecutionContext) = get.map(_.recoverWith(pf))
 }
 
 trait TaskMonad extends Monad[Task] {
