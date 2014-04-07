@@ -29,7 +29,9 @@ object Consumer {
 
   trait ConsumerData[Evt]
 
-  case class ConsumerException[Evt](cause: Evt) extends Exception
+  case class ConsumerException[Evt](cause: Evt) extends Exception {
+    override def toString() = "ConsumerException(" + cause + ")"
+  }
 
   case class DataChunk[Evt](c: Evt) extends ConsumerData[Evt]
 
