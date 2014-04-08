@@ -10,9 +10,6 @@ import akka.io.TcpPipelineHandler.{ Init, WithinActorContext }
 import akka.pattern.ask
 import akka.util.Timeout
 
-import scalaz._
-import Scalaz._
-
 import play.api.libs.iteratee._
 
 import nl.gideondk.sentinel._

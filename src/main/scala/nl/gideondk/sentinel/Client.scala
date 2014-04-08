@@ -19,30 +19,30 @@ trait Client[Cmd, Evt] {
 
   def actor: ActorRef
 
-  def ?(command: Cmd)(implicit context: ExecutionContext): Task[Evt] = ask(command)
+  def ?(command: Cmd)(implicit context: ExecutionContext): Future[Evt] = ask(command)
 
-  def ?->>(command: Cmd)(implicit context: ExecutionContext): Task[Enumerator[Evt]] = askStream(command)
+  def ?->>(command: Cmd)(implicit context: ExecutionContext): Future[Enumerator[Evt]] = askStream(command)
 
-  def ?<<-(command: Cmd, source: Enumerator[Cmd])(implicit context: ExecutionContext): Task[Evt] = sendStream(command, source)
+  def ?<<-(command: Cmd, source: Enumerator[Cmd])(implicit context: ExecutionContext): Future[Evt] = sendStream(command, source)
 
-  def ?<<-(source: Enumerator[Cmd])(implicit context: ExecutionContext): Task[Evt] = sendStream(source)
+  def ?<<-(source: Enumerator[Cmd])(implicit context: ExecutionContext): Future[Evt] = sendStream(source)
 
-  def ask(command: Cmd)(implicit context: ExecutionContext): Task[Evt] = Task {
+  def ask(command: Cmd)(implicit context: ExecutionContext): Future[Evt] = {
     val promise = Promise[Evt]()
     actor ! Command.Ask(command, ReplyRegistration(promise))
     promise.future
   }
 
-  def askStream(command: Cmd)(implicit context: ExecutionContext): Task[Enumerator[Evt]] = Task {
+  def askStream(command: Cmd)(implicit context: ExecutionContext): Future[Enumerator[Evt]] = {
     val promise = Promise[Enumerator[Evt]]()
     actor ! Command.AskStream(command, StreamReplyRegistration(promise))
     promise.future
   }
 
-  def sendStream(command: Cmd, source: Enumerator[Cmd]): Task[Evt] =
+  def sendStream(command: Cmd, source: Enumerator[Cmd]): Future[Evt] =
     sendStream(Enumerator(command) >>> source)
 
-  def sendStream(source: Enumerator[Cmd]): Task[Evt] = Task {
+  def sendStream(source: Enumerator[Cmd]): Future[Evt] = {
     val promise = Promise[Evt]()
     actor ! Command.SendStream(source, ReplyRegistration(promise))
     promise.future

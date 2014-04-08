@@ -5,11 +5,10 @@ import scala.concurrent.ExecutionContext.Implicits.global
 import org.scalatest.WordSpec
 import org.scalatest.matchers.ShouldMatchers
 
-import scalaz._
-import Scalaz._
-
 import akka.actor._
 import akka.routing._
+
+import scala.concurrent._
 import scala.concurrent.duration._
 
 import protocols._
@@ -24,7 +23,6 @@ class FullDuplexSpec extends WordSpec with ShouldMatchers {
 
   def server(portNumber: Int)(implicit system: ActorSystem) = {
     val s = Server(portNumber, SimpleServerHandler, stages = SimpleMessage.stages)(system)
-    Thread.sleep(100)
     s
   }
 
@@ -34,12 +32,13 @@ class FullDuplexSpec extends WordSpec with ShouldMatchers {
       val s = server(portNumber)
       val c = client(portNumber)
 
+      Thread.sleep(500)
       val action = c ? SimpleCommand(PING_PONG, "")
       val serverAction = (s ?* SimpleCommand(PING_PONG, "")).map(_.head)
 
-      val responses = Task.sequence(List(action, serverAction))
+      val responses = Future.sequence(List(action, serverAction))
 
-      val results = responses.copoint
+      val results = Await.result(responses, 5 seconds)
 
       results.length should equal(2)
       results.distinct.length should equal(1)
@@ -53,13 +52,13 @@ class FullDuplexSpec extends WordSpec with ShouldMatchers {
 
       val numberOfRequests = 1000
 
-      val actions = Task.sequenceSuccesses(List.fill(numberOfRequests)(c ? SimpleCommand(PING_PONG, "")))
-      val secActions = Task.sequenceSuccesses(List.fill(numberOfRequests)(secC ? SimpleCommand(PING_PONG, "")))
-      val serverActions = Task.sequenceSuccesses(List.fill(numberOfRequests)((s ?** SimpleCommand(PING_PONG, ""))))
+      val actions = Future.sequence(List.fill(numberOfRequests)(c ? SimpleCommand(PING_PONG, "")))
+      val secActions = Future.sequence(List.fill(numberOfRequests)(secC ? SimpleCommand(PING_PONG, "")))
+      val serverActions = Future.sequence(List.fill(numberOfRequests)((s ?** SimpleCommand(PING_PONG, ""))))
 
-      val combined = Task.sequence(List(actions, serverActions.map(_.flatten), secActions))
+      val combined = Future.sequence(List(actions, serverActions.map(_.flatten), secActions))
 
-      val results = combined.copoint
+      val results = Await.result(combined, 5 seconds)
 
       results(0).length should equal(numberOfRequests)
       results(2).length should equal(numberOfRequests)

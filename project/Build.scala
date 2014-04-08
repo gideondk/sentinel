@@ -14,20 +14,18 @@ object ApplicationBuild extends Build {
 
         "Sonatype OSS Releases" at "http://oss.sonatype.org/content/repositories/releases/",
         "Sonatype OSS Snapshots" at "http://oss.sonatype.org/content/repositories/snapshots/",
-        
+
         "Typesafe Snapshots" at "http://repo.typesafe.com/typesafe/snapshots/",
         "Typesafe Repository" at "http://repo.typesafe.com/typesafe/releases/"),
-      
+
       publishTo := Some(Resolver.file("file", new File("/Users/gideondk/Development/gideondk-mvn-repo")))
     )
 
   val appDependencies = Seq(
-    "org.scalaz" %% "scalaz-core" % "7.0.3",
-    "org.scalaz" %% "scalaz-effect" % "7.0.3",
-
     "org.scalatest" % "scalatest_2.10" % "1.9.1" % "test",
 
     "com.typesafe.play" %% "play-iteratees" % "2.2.0",
+
     "com.typesafe.akka" % "akka-actor_2.10" % "2.3.0",
     "com.typesafe.akka" %% "akka-testkit" % "2.3.0"
   )
@@ -66,4 +64,3 @@ object Format {
       setPreference(SpacesWithinPatternBinders, true)
   }
 }
-

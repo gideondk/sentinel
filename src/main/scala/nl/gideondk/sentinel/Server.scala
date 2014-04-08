@@ -15,35 +15,35 @@ import akka.pattern.ask
 trait Server[Cmd, Evt] {
   def actor: ActorRef
 
-  def ?**(command: Cmd)(implicit context: ExecutionContext): Task[List[Evt]] = askAll(command)
+  def ?**(command: Cmd)(implicit context: ExecutionContext): Future[List[Evt]] = askAll(command)
 
-  def ?*(command: Cmd)(implicit context: ExecutionContext): Task[List[Evt]] = askAllHosts(command)
+  def ?*(command: Cmd)(implicit context: ExecutionContext): Future[List[Evt]] = askAllHosts(command)
 
-  def ?(command: Cmd)(implicit context: ExecutionContext): Task[Evt] = askAny(command)
+  def ?(command: Cmd)(implicit context: ExecutionContext): Future[Evt] = askAny(command)
 
-  def askAll(command: Cmd)(implicit context: ExecutionContext): Task[List[Evt]] = Task {
+  def askAll(command: Cmd)(implicit context: ExecutionContext): Future[List[Evt]] = {
     val promise = Promise[List[Evt]]()
     actor ! ServerCommand.AskAll(command, promise)
     promise.future
   }
 
-  def askAllHosts(command: Cmd)(implicit context: ExecutionContext): Task[List[Evt]] = Task {
+  def askAllHosts(command: Cmd)(implicit context: ExecutionContext): Future[List[Evt]] = {
     val promise = Promise[List[Evt]]()
     actor ! ServerCommand.AskAllHosts(command, promise)
     promise.future
   }
 
-  def askAny(command: Cmd)(implicit context: ExecutionContext): Task[Evt] = Task {
+  def askAny(command: Cmd)(implicit context: ExecutionContext): Future[Evt] = {
     val promise = Promise[Evt]()
     actor ! ServerCommand.AskAny(command, promise)
     promise.future
   }
 
-  def connectedSockets(implicit timeout: Timeout): Task[Int] = Task {
+  def connectedSockets(implicit timeout: Timeout): Future[Int] = {
     (actor ? ServerMetric.ConnectedSockets).mapTo[Int]
   }
 
-  def connectedHosts(implicit timeout: Timeout): Task[Int] = Task {
+  def connectedHosts(implicit timeout: Timeout): Future[Int] = {
     (actor ? ServerMetric.ConnectedHosts).mapTo[Int]
   }
 }
@@ -67,17 +67,23 @@ class ServerCore[Cmd, Evt](port: Int, description: String, stages: ⇒ PipelineS
   }
 
   def receiveCommands: Receive = {
-    case x: ServerCommand.AskAll[Cmd, Evt] if connections.values.toList.length > 0 ⇒
-      val futures = Task.sequence(connections.values.toList.flatten.map(wrapAtenna).map(_ ? x.payload)).start
-      x.promise.completeWith(futures)
+    case x: ServerCommand.AskAll[Cmd, Evt] ⇒
+      if (connections.values.toList.length > 0) {
+        val futures = Future.sequence(connections.values.toList.flatten.map(wrapAtenna).map(_ ? x.payload))
+        x.promise.completeWith(futures)
+      } else x.promise.failure(new Exception("No clients connected"))
 
-    case x: ServerCommand.AskAllHosts[Cmd, Evt] if connections.values.toList.length > 0 ⇒
-      val futures = Task.sequence(connections.values.toList.map(x ⇒ Random.shuffle(x.toList).head).map(wrapAtenna).map(_ ? x.payload)).start
-      x.promise.completeWith(futures)
+    case x: ServerCommand.AskAllHosts[Cmd, Evt] ⇒
+      if (connections.values.toList.length > 0) {
+        val futures = Future.sequence(connections.values.toList.map(x ⇒ Random.shuffle(x.toList).head).map(wrapAtenna).map(_ ? x.payload))
+        x.promise.completeWith(futures)
+      } else x.promise.failure(new Exception("No clients connected"))
 
-    case x: ServerCommand.AskAny[Cmd, Evt] if connections.values.toList.length > 0 ⇒
-      val future = (wrapAtenna(Random.shuffle(connections.values.toList.flatten).head) ? x.payload).start
-      x.promise.completeWith(future)
+    case x: ServerCommand.AskAny[Cmd, Evt] ⇒
+      if (connections.values.toList.length > 0) {
+        val future = (wrapAtenna(Random.shuffle(connections.values.toList.flatten).head) ? x.payload)
+        x.promise.completeWith(future)
+      } else x.promise.failure(new Exception("No clients connected"))
 
     case ServerMetric.ConnectedSockets ⇒
       sender ! connections.values.flatten.toList.length

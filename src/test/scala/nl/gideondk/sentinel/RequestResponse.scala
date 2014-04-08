@@ -5,13 +5,12 @@ import scala.concurrent.ExecutionContext.Implicits.global
 import org.scalatest.WordSpec
 import org.scalatest.matchers.{ Matchers, ShouldMatchers }
 
-import scalaz._
-import Scalaz._
-
 import akka.actor._
 import akka.routing._
 import scala.concurrent.duration._
 import scala.concurrent._
+
+import scala.util.Try
 
 import play.api.libs.iteratee._
 
@@ -38,7 +37,7 @@ class RequestResponseSpec extends WordSpec with Matchers {
       val c = client(portNumber)
 
       val action = c ? SimpleCommand(PING_PONG, "")
-      val result = action.run
+      val result = Try(Await.result(action, 5 seconds))
 
       result.isSuccess should equal(true)
     }
@@ -50,8 +49,8 @@ class RequestResponseSpec extends WordSpec with Matchers {
 
       val numberOfRequests = 20 * 1000
 
-      val action = Task.sequenceSuccesses(List.fill(numberOfRequests)(c ? SimpleCommand(PING_PONG, "")))
-      val result = action.run
+      val action = Future.sequence(List.fill(numberOfRequests)(c ? SimpleCommand(PING_PONG, "")))
+      val result = Try(Await.result(action, 5 seconds))
 
       result.get.length should equal(numberOfRequests)
       result.isSuccess should equal(true)
@@ -65,8 +64,8 @@ class RequestResponseSpec extends WordSpec with Matchers {
       val numberOfRequests = 90 * 1000
 
       val items = List.range(0, numberOfRequests).map(_.toString)
-      val action = Task.sequenceSuccesses(items.map(x ⇒ (c ? SimpleCommand(ECHO, x))))
-      val result = action.run.get
+      val action = Future.sequence(items.map(x ⇒ (c ? SimpleCommand(ECHO, x))))
+      val result = Await.result(action, 5 seconds)
 
       result.map(_.payload) should equal(items)
     }
@@ -78,7 +77,7 @@ class RequestResponseSpec extends WordSpec with Matchers {
       Thread.sleep(500)
 
       val action = c ? SimpleCommand(PING_PONG, "")
-      val result = action.run
+      val result = Try(Await.result(action, 5 seconds))
 
       result.isSuccess should equal(true)
 
@@ -87,7 +86,7 @@ class RequestResponseSpec extends WordSpec with Matchers {
       val ss = server(portNumber)
 
       val secAction = c ? SimpleCommand(PING_PONG, "")
-      val endResult = secAction.run
+      val endResult = Try(Await.result(secAction, 5 seconds))
 
       endResult.isSuccess should equal(true)
     }

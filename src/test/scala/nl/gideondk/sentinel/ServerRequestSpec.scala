@@ -5,11 +5,9 @@ import scala.concurrent.ExecutionContext.Implicits.global
 import org.scalatest.WordSpec
 import org.scalatest.matchers.ShouldMatchers
 
-import scalaz._
-import Scalaz._
-
 import akka.actor._
 import akka.routing._
+import scala.concurrent._
 import scala.concurrent.duration._
 
 import protocols._
@@ -40,7 +38,7 @@ class ServerRequestSpec extends WordSpec with ShouldMatchers {
       Thread.sleep(500)
 
       val action = (s ? SimpleCommand(PING_PONG, ""))
-      val result = action.copoint
+      val result = Await.result(action, 5 seconds)
 
       result should equal(SimpleReply("PONG"))
     }
@@ -55,7 +53,7 @@ class ServerRequestSpec extends WordSpec with ShouldMatchers {
       Thread.sleep(500)
 
       val action = (s ?* SimpleCommand(PING_PONG, ""))
-      val result = action.copoint
+      val result = Await.result(action, 5 seconds)
 
       result.length should equal(1)
     }
@@ -70,7 +68,7 @@ class ServerRequestSpec extends WordSpec with ShouldMatchers {
       Thread.sleep(500)
 
       val action = (s ?** SimpleCommand(PING_PONG, ""))
-      val result = action.copoint
+      val result = Await.result(action, 5 seconds)
 
       result.length should equal(numberOfClients * numberOfConnections)
     }
@@ -84,17 +82,17 @@ class ServerRequestSpec extends WordSpec with ShouldMatchers {
 
       Thread.sleep(500)
 
-      val connectedSockets = (s connectedSockets).copoint
+      val connectedSockets = Await.result((s connectedSockets), 5 seconds)
       connectedSockets should equal(numberOfClients * numberOfConnections)
 
-      val connectedHosts = (s connectedHosts).copoint
+      val connectedHosts = Await.result((s connectedHosts), 5 seconds)
       connectedHosts should equal(1)
 
       val toBeKilledActors = clients.splitAt(3)._1.map(_.actor)
       toBeKilledActors.foreach(x ⇒ x ! PoisonPill)
       Thread.sleep(500)
 
-      val stillConnectedSockets = (s connectedSockets).copoint
+      val stillConnectedSockets = Await.result((s connectedSockets), 5 seconds)
       stillConnectedSockets should equal(2 * numberOfConnections)
     }
   }

@@ -13,11 +13,6 @@ import akka.io.{ LengthFieldFrame, PipelineContext, SymmetricPipePair, Symmetric
 import akka.routing.RoundRobinRouter
 import akka.util.ByteString
 
-import Task._
-
-import scalaz._
-import Scalaz._
-
 import akka.actor._
 import akka.testkit._
 import scala.concurrent.duration._
