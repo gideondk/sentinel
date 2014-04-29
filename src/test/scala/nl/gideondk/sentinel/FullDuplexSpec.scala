@@ -19,7 +19,7 @@ class FullDuplexSpec extends WordSpec with ShouldMatchers {
 
   implicit val duration = Duration(25, SECONDS)
 
-  def client(portNumber: Int)(implicit system: ActorSystem) = Client.randomRouting("localhost", portNumber, 1, "Worker", SimpleMessage.stages, 5 seconds, SimpleServerHandler)(system)
+  def client(portNumber: Int)(implicit system: ActorSystem) = Client.randomRouting("localhost", portNumber, 1, "Worker", SimpleMessage.stages, 0.5 seconds, SimpleServerHandler)(system)
 
   def server(portNumber: Int)(implicit system: ActorSystem) = {
     val s = Server(portNumber, SimpleServerHandler, stages = SimpleMessage.stages)(system)
@@ -47,10 +47,13 @@ class FullDuplexSpec extends WordSpec with ShouldMatchers {
     "be able to exchange multiple requests simultaneously" in new TestKitSpec {
       val portNumber = TestHelpers.portNumber.getAndIncrement()
       val s = server(portNumber)
+      Thread.sleep(500)
+
       val c = client(portNumber)
       val secC = client(portNumber)
+      Thread.sleep(500)
 
-      val numberOfRequests = 1000
+      val numberOfRequests = 100
 
       val actions = Future.sequence(List.fill(numberOfRequests)(c ? SimpleCommand(PING_PONG, "")))
       val secActions = Future.sequence(List.fill(numberOfRequests)(secC ? SimpleCommand(PING_PONG, "")))

@@ -10,7 +10,6 @@ import akka.pattern.ask
 import akka.util.Timeout
 
 import play.api.libs.iteratee._
-
 import nl.gideondk.sentinel._
 
 object Consumer {
@@ -53,7 +52,6 @@ class Consumer[Cmd, Evt](init: Init[WithinActorContext, Cmd, Evt], streamChunkTi
   var buffer = Queue[Promise[ConsumerData[Evt]]]()
 
   var registrations = Queue[Registration[Evt, _]]()
-  var currentPromise: Option[Promise[Evt]] = None
 
   var runningSource: Option[Enumerator[Evt]] = None
 
@@ -86,7 +84,7 @@ class Consumer[Cmd, Evt](init: Init[WithinActorContext, Cmd, Evt], streamChunkTi
     }
   }
 
-  def popAndSetHook = {
+  def popAndSetHook: Unit = {
     val worker = self
     val registration = registrations.head
     registrations = registrations.tail
@@ -94,16 +92,20 @@ class Consumer[Cmd, Evt](init: Init[WithinActorContext, Cmd, Evt], streamChunkTi
     implicit val timeout = streamChunkTimeout
 
     registration match {
-      case x: ReplyRegistration[Evt] ⇒ x.promise.completeWith((self ? AskNextChunk).mapTo[Promise[ConsumerData[Evt]]].flatMap(_.future.flatMap {
-        _ match {
-          case x: DataChunk[Evt] ⇒
-            Future.successful(x.c)
-          case x: ErrorChunk[Evt] ⇒
-            Future.failed(ConsumerException(x.c))
-        }
-      }))
-      case x: StreamReplyRegistration[Evt] ⇒
-        val resource = Enumerator.generateM {
+      case x: ReplyRegistration[Evt] ⇒ {
+        x.promise.completeWith(nextChunk.future.flatMap {
+          _ match {
+            case x: DataChunk[Evt] ⇒
+              Future.successful(x.c)
+            case x: ErrorChunk[Evt] ⇒
+              Future.failed(ConsumerException(x.c))
+          }
+        })
+        if (registrations.headOption.isDefined) popAndSetHook
+      }
+
+      case x: StreamReplyRegistration[Evt] ⇒ {
+        val resource = Enumerator.generateM[Evt] {
           (worker ? AskNextChunk).mapTo[Promise[ConsumerData[Evt]]].flatMap(_.future).flatMap {
             _ match {
               case x: EndOfStream[Evt] ⇒ (worker ? ReleaseStreamConsumer) flatMap (u ⇒ Future(None))
@@ -115,13 +117,24 @@ class Consumer[Cmd, Evt](init: Init[WithinActorContext, Cmd, Evt], streamChunkTi
 
         runningSource = Some(resource)
         x.promise success resource
+      }
     }
+  }
+
+  def nextChunk() = buffer.headOption match {
+    case Some(p) ⇒
+      buffer = buffer.tail
+      p
+    case None ⇒
+      val p = Promise[ConsumerData[Evt]]()
+      hooks :+= p
+      p
   }
 
   def handleRegistrations: Receive = {
     case rc: Registration[Evt, _] ⇒
       registrations :+= rc
-      if (runningSource.isEmpty && currentPromise.isEmpty) popAndSetHook
+      if (runningSource.isEmpty) popAndSetHook
   }
 
   var behavior: Receive = handleRegistrations orElse {
@@ -131,16 +144,7 @@ class Consumer[Cmd, Evt](init: Init[WithinActorContext, Cmd, Evt], streamChunkTi
       sender ! ()
 
     case AskNextChunk ⇒
-      val promise = buffer.headOption match {
-        case Some(p) ⇒
-          buffer = buffer.tail
-          p
-        case None ⇒
-          val p = Promise[ConsumerData[Evt]]()
-          hooks :+= p
-          p
-      }
-      sender ! promise
+      sender ! nextChunk()
 
     case x: ConsumerActionAndData[Evt] ⇒ processAction(x.data, x.action)
 
