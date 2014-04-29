@@ -75,6 +75,24 @@ class StreamingSpec extends WordSpec with ShouldMatchers {
       result.length should equal(count * numberOfActions)
     }
 
+    "be able to receive multiple streams and normal commands simultaneously from a server" in new TestKitSpec {
+      val portNumber = TestHelpers.portNumber.getAndIncrement()
+      val s = server(portNumber)
+      val c = client(portNumber)
+
+      val count = 500
+      val numberOfActions = 8
+
+      val streamAction = Future.sequence(List.fill(numberOfActions)((c ?->> SimpleCommand(GENERATE_NUMBERS, count.toString)).flatMap(x ⇒ x |>>> Iteratee.getChunks)))
+      val action = Future.sequence(List.fill(count)(c ? SimpleCommand(PING_PONG, "")))
+
+      val actions = Future.sequence(List(streamAction, action))
+
+      val result = Try(Await.result(actions.map(_.flatten), 5 seconds))
+
+      result.isSuccess should equal(true)
+    }
+
     "be able to receive send streams simultaneously to a server" in new TestKitSpec {
       val portNumber = TestHelpers.portNumber.getAndIncrement()
       val s = server(portNumber)

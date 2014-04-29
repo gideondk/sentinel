@@ -22,7 +22,7 @@ class RequestResponseSpec extends WordSpec with Matchers {
 
   implicit val duration = Duration(5, SECONDS)
 
-  def client(portNumber: Int)(implicit system: ActorSystem) = Client.randomRouting("localhost", portNumber, 320, "Worker", SimpleMessage.stages, 0.5 seconds, SimpleServerHandler)(system)
+  def client(portNumber: Int)(implicit system: ActorSystem) = Client.roundRobinRouting("localhost", portNumber, 64, "Worker", SimpleMessage.stages, 0.1 seconds, SimpleServerHandler, lowBytes = 1024L, highBytes = 1024 * 1024, maxBufferSize = 1024 * 1024 * 50)(system)
 
   def server(portNumber: Int)(implicit system: ActorSystem) = {
     val s = Server(portNumber, SimpleServerHandler, stages = SimpleMessage.stages)(system)
