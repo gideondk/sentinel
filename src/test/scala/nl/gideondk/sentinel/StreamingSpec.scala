@@ -15,7 +15,7 @@ import play.api.libs.iteratee._
 
 import protocols._
 
-class StreamingSpec extends WordSpec with ShouldMatchers {
+class StreamingSpec extends WordSpec {
 
   import SimpleMessage._
 

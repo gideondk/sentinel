@@ -1,31 +1,20 @@
 package nl.gideondk.sentinel
 
-import scala.concurrent._
-import scala.concurrent.ExecutionContext.Implicits.global
-
-import scala.util.Try
-
-import org.scalatest.BeforeAndAfterAll
-import org.scalatest.WordSpec
+import org.scalatest.{ Suite, BeforeAndAfterAll, WordSpec }
 import org.scalatest.matchers.ShouldMatchers
 
-import akka.io.{ LengthFieldFrame, PipelineContext, SymmetricPipePair, SymmetricPipelineStage }
-import akka.routing.RoundRobinRouter
+import akka.io.SymmetricPipelineStage
 import akka.util.ByteString
 
 import akka.actor._
 import akka.testkit._
-import scala.concurrent.duration._
-import scala.concurrent._
 
 import java.util.concurrent.atomic.AtomicInteger
 
 import protocols._
 
-import java.net.InetSocketAddress
-
 abstract class TestKitSpec extends TestKit(ActorSystem())
-    with WordSpec
+    with Suite
     with ShouldMatchers
     with BeforeAndAfterAll
     with ImplicitSender {

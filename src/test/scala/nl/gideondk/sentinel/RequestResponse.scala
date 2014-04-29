@@ -3,20 +3,16 @@ package nl.gideondk.sentinel
 import scala.concurrent.ExecutionContext.Implicits.global
 
 import org.scalatest.WordSpec
-import org.scalatest.matchers.{ Matchers, ShouldMatchers }
 
 import akka.actor._
-import akka.routing._
 import scala.concurrent.duration._
 import scala.concurrent._
 
 import scala.util.Try
 
-import play.api.libs.iteratee._
-
 import protocols._
 
-class RequestResponseSpec extends WordSpec with Matchers {
+class RequestResponseSpec extends WordSpec {
 
   import SimpleMessage._
 
