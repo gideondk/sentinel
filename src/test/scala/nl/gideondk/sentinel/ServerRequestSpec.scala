@@ -13,7 +13,7 @@ import scala.concurrent.duration._
 import protocols._
 import akka.util.Timeout
 
-class ServerRequestSpec extends WordSpec with ShouldMatchers {
+class ServerRequestSpec extends WordSpec {
 
   import SimpleMessage._
 

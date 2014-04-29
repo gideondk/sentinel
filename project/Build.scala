@@ -7,7 +7,7 @@ object ApplicationBuild extends Build {
       name := "sentinel",
       version := "0.7.1",
       organization := "nl.gideondk",
-      scalaVersion := "2.10.2",
+      scalaVersion := "2.11.0",
       parallelExecution in Test := false,
       resolvers ++= Seq(Resolver.mavenLocal,
         "gideondk-repo" at "https://raw.github.com/gideondk/gideondk-mvn-repo/master",
@@ -22,12 +22,12 @@ object ApplicationBuild extends Build {
     )
 
   val appDependencies = Seq(
-    "org.scalatest" % "scalatest_2.10" % "1.9.1" % "test",
+    "org.scalatest" %% "scalatest" % "2.1.4" % "test",
 
-    "com.typesafe.play" %% "play-iteratees" % "2.2.0",
+    "com.typesafe.play" % "play-iteratees_2.10" % "2.2.0",
 
-    "com.typesafe.akka" % "akka-actor_2.10" % "2.3.0",
-    "com.typesafe.akka" %% "akka-testkit" % "2.3.0"
+    "com.typesafe.akka" %% "akka-actor" % "2.3.2",
+    "com.typesafe.akka" %% "akka-testkit" % "2.3.2"
   )
 
   lazy val root = Project(id = "sentinel",
