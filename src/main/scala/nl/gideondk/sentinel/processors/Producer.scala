@@ -123,7 +123,12 @@ class Producer[Cmd, Evt](init: Init[WithinActorContext, Cmd, Evt], streamChunkTi
       val worker = self
       implicit val timeout = streamChunkTimeout
 
-      (x.stream |>>> Iteratee.foldM(())((a, b) ⇒ (worker ? StreamProducerChunk(b)).map(x ⇒ ()))).flatMap(x ⇒ (worker ? StreamProducerEnded))
+      val consumer = (x.stream |>>> Iteratee.foldM(())((a, b) ⇒ (worker ? StreamProducerChunk(b)).map(x ⇒ ()))).flatMap(x ⇒ (worker ? StreamProducerEnded))
+      consumer.onFailure {
+        case e ⇒
+          log.error(e, e.getMessage)
+          context.stop(self)
+      }
 
       context.become(handleRequestAndStreamResponse)
 

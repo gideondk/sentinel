@@ -27,6 +27,8 @@ object Consumer {
 
   case object ReleaseStreamConsumer extends StreamConsumerMessage
 
+  case object TimeoutStreamConsumer extends StreamConsumerMessage
+
   trait ConsumerData[Evt]
 
   case class ConsumerException[Evt](cause: Evt) extends Exception {
@@ -35,36 +37,155 @@ object Consumer {
 
   case class DataChunk[Evt](c: Evt) extends ConsumerData[Evt]
 
+  case class StreamChunk[Evt](c: Evt) extends ConsumerData[Evt]
+
   case class ErrorChunk[Evt](c: Evt) extends ConsumerData[Evt]
 
   case class EndOfStream[Evt]() extends ConsumerData[Evt]
 
 }
 
-class Consumer[Cmd, Evt](init: Init[WithinActorContext, Cmd, Evt], streamChunkTimeout: Timeout = Timeout(5 seconds)) extends Actor with ActorLogging {
+class StreamHandler[Cmd, Evt](streamConsumerTimeout: Timeout = Timeout(10 seconds)) extends Actor with ActorLogging {
+  import Registration._
+  import Consumer._
+  import ConsumerAction._
+  import context.dispatcher
 
+  context.setReceiveTimeout(streamConsumerTimeout.duration)
+
+  var hook: Option[Promise[ConsumerData[Evt]]] = None
+  var buffer = Queue[ConsumerData[Evt]]()
+
+  override def postStop() = {
+    hook.foreach(_.failure(new Exception("Actor quit unexpectedly")))
+  }
+
+  def receive: Receive = {
+    case ReleaseStreamConsumer ⇒
+      context.stop(self)
+      sender ! ()
+
+    case AskNextChunk ⇒
+      sender ! nextStreamChunk
+
+    case chunk: ConsumerData[Evt] ⇒
+      hook match {
+        case Some(x) ⇒
+          x.success(chunk)
+          hook = None
+        case None ⇒
+          buffer :+= chunk
+      }
+
+    case ReceiveTimeout ⇒ {
+      context.stop(self)
+    }
+
+  }
+
+  def nextStreamChunk = {
+    buffer.headOption match {
+      case Some(c) ⇒
+        buffer = buffer.tail
+        Promise[ConsumerData[Evt]]().success(c)
+      case None ⇒
+        val p = Promise[ConsumerData[Evt]]()
+        hook = Some(p)
+        p
+    }
+  }
+}
+
+class Consumer[Cmd, Evt](init: Init[WithinActorContext, Cmd, Evt],
+                         streamChunkTimeout: Timeout = Timeout(120 seconds),
+                         streamConsumerTimeout: Timeout = Timeout(10 seconds)) extends Actor with ActorLogging {
   import Registration._
   import Consumer._
   import ConsumerAction._
 
   import context.dispatcher
 
-  var hooks = Queue[Promise[ConsumerData[Evt]]]()
-  var buffer = Queue[Promise[ConsumerData[Evt]]]()
+  implicit val timeout = streamChunkTimeout
 
-  var registrations = Queue[Registration[Evt, _]]()
-  var currentPromise: Option[Promise[Evt]] = None
+  var replyRegistrations = Queue[ReplyRegistration[Evt]]()
+  var streamRegistrations = Queue[StreamReplyRegistration[Evt]]()
 
-  var runningSource: Option[Enumerator[Evt]] = None
+  var streamBuffer = Queue[ConsumerData[Evt]]()
+
+  var currentRunningStream: Option[ActorRef] = None
+
+  override def postStop() = {
+    replyRegistrations.foreach(_.promise.failure(new Exception("Actor quit unexpectedly")))
+    streamRegistrations.foreach(_.promise.failure(new Exception("Actor quit unexpectedly")))
+  }
 
   def processAction(data: Evt, action: ConsumerAction) = {
+
       def handleConsumerData(cd: ConsumerData[Evt]) = {
-        hooks.headOption match {
+        val registration = replyRegistrations.head
+        replyRegistrations = replyRegistrations.tail
+
+        registration.promise.completeWith(cd match {
+          case x: DataChunk[Evt] ⇒
+            Future.successful(x.c)
+          case x: ErrorChunk[Evt] ⇒
+            Future.failed(ConsumerException(x.c))
+        })
+      }
+
+      def handleStreamData(cd: ConsumerData[Evt]) = {
+        currentRunningStream match {
           case Some(x) ⇒
-            x.success(cd)
-            hooks = hooks.tail
+            cd match {
+              case x: EndOfStream[Evt] ⇒ currentRunningStream = None
+              case _                   ⇒ ()
+            }
+
+            x ! cd
+
           case None ⇒
-            buffer :+= Promise.successful(cd)
+            streamRegistrations.headOption match {
+              case Some(registration) ⇒
+                val streamHandler = context.actorOf(Props(new StreamHandler(streamConsumerTimeout)), name = "streamHandler-" + java.util.UUID.randomUUID.toString)
+                currentRunningStream = Some(streamHandler)
+
+                val worker = streamHandler
+
+                // TODO: handle stream chunk timeout better
+                val resource = Enumerator.generateM[Evt] {
+                  (worker ? AskNextChunk).mapTo[Promise[ConsumerData[Evt]]].flatMap(_.future).flatMap {
+                    _ match {
+                      case x: EndOfStream[Evt] ⇒ (worker ? ReleaseStreamConsumer) flatMap (u ⇒ Future(None))
+                      case x: StreamChunk[Evt] ⇒ Future(Some(x.c))
+                      case x: ErrorChunk[Evt]  ⇒ (worker ? ReleaseStreamConsumer) flatMap (u ⇒ Future.failed(ConsumerException(x.c)))
+                    }
+                  }
+                }
+
+                  def dequeueStreamBuffer(): Unit = {
+                    streamBuffer.headOption match {
+                      case Some(x) ⇒
+                        streamBuffer = streamBuffer.tail
+                        x match {
+                          case x: EndOfStream[Evt] ⇒
+                            worker ! x
+                          case x ⇒
+                            worker ! x
+                            dequeueStreamBuffer()
+                        }
+                      case None ⇒ ()
+                    }
+                  }
+
+                dequeueStreamBuffer()
+                worker ! cd
+
+                streamRegistrations = streamRegistrations.tail
+                registration.promise success resource
+
+              case None ⇒
+                streamBuffer :+= cd
+            }
         }
       }
 
@@ -72,82 +193,36 @@ class Consumer[Cmd, Evt](init: Init[WithinActorContext, Cmd, Evt], streamChunkTi
       case AcceptSignal ⇒
         handleConsumerData(DataChunk(data))
       case AcceptError ⇒
-        handleConsumerData(ErrorChunk(data))
+        currentRunningStream match {
+          case Some(x) ⇒ handleStreamData(ErrorChunk(data))
+          case None    ⇒ handleConsumerData(ErrorChunk(data))
+        }
 
       case ConsumeStreamChunk ⇒
-        handleConsumerData(DataChunk(data)) // Should eventually seperate data chunks and stream chunks for better socket consistency handling
+        handleStreamData(StreamChunk(data)) // Should eventually seperate data chunks and stream chunks for better socket consistency handling
       case EndStream ⇒
-        handleConsumerData(EndOfStream[Evt]())
+        handleStreamData(EndOfStream[Evt]())
       case ConsumeChunkAndEndStream ⇒
-        handleConsumerData(DataChunk(data))
-        handleConsumerData(EndOfStream[Evt]())
+        handleStreamData(StreamChunk(data))
+        handleStreamData(EndOfStream[Evt]())
 
       case Ignore ⇒ ()
     }
   }
 
-  def popAndSetHook = {
-    val worker = self
-    val registration = registrations.head
-    registrations = registrations.tail
-
-    implicit val timeout = streamChunkTimeout
-
-    registration match {
-      case x: ReplyRegistration[Evt] ⇒ x.promise.completeWith((self ? AskNextChunk).mapTo[Promise[ConsumerData[Evt]]].flatMap(_.future.flatMap {
-        _ match {
-          case x: DataChunk[Evt] ⇒
-            Future.successful(x.c)
-          case x: ErrorChunk[Evt] ⇒
-            Future.failed(ConsumerException(x.c))
-        }
-      }))
-      case x: StreamReplyRegistration[Evt] ⇒
-        val resource = Enumerator.generateM {
-          (worker ? AskNextChunk).mapTo[Promise[ConsumerData[Evt]]].flatMap(_.future).flatMap {
-            _ match {
-              case x: EndOfStream[Evt] ⇒ (worker ? ReleaseStreamConsumer) flatMap (u ⇒ Future(None))
-              case x: DataChunk[Evt]   ⇒ Future(Some(x.c))
-              case x: ErrorChunk[Evt]  ⇒ (worker ? ReleaseStreamConsumer) flatMap (u ⇒ Future.failed(ConsumerException(x.c)))
-            }
-          }
-        }
-
-        runningSource = Some(resource)
-        x.promise success resource
-    }
-  }
-
   def handleRegistrations: Receive = {
-    case rc: Registration[Evt, _] ⇒
-      registrations :+= rc
-      if (runningSource.isEmpty && currentPromise.isEmpty) popAndSetHook
+    case rc: ReplyRegistration[Evt] ⇒
+      replyRegistrations :+= rc
+
+    case rc: StreamReplyRegistration[Evt] ⇒
+      streamRegistrations :+= rc
+
   }
 
   var behavior: Receive = handleRegistrations orElse {
-    case ReleaseStreamConsumer ⇒
-      runningSource = None
-      if (registrations.headOption.isDefined) popAndSetHook
-      sender ! ()
+    case x: ConsumerActionAndData[Evt] ⇒
+      processAction(x.data, x.action)
 
-    case AskNextChunk ⇒
-      val promise = buffer.headOption match {
-        case Some(p) ⇒
-          buffer = buffer.tail
-          p
-        case None ⇒
-          val p = Promise[ConsumerData[Evt]]()
-          hooks :+= p
-          p
-      }
-      sender ! promise
-
-    case x: ConsumerActionAndData[Evt] ⇒ processAction(x.data, x.action)
-
-  }
-
-  override def postStop() = {
-    hooks.foreach(_.failure(new Exception("Actor quit unexpectedly")))
   }
 
   def receive = behavior

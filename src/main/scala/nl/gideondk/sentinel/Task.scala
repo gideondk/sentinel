@@ -21,7 +21,7 @@ final case class Task[A](get: IO[Future[A]]) {
 
   def recover[U >: A](pf: PartialFunction[Throwable, U])(implicit executor: ExecutionContext) = get.map(_.recover(pf))
 
-  def recoverWith[U >: T](pf: PartialFunction[Throwable, Future[U]])(implicit executor: ExecutionContext) = get.map(_.recoverWith(pf))
+  def recoverWith[U >: A](pf: PartialFunction[Throwable, Future[U]])(implicit executor: ExecutionContext) = get.map(_.recoverWith(pf))
 }
 
 trait TaskMonad extends Monad[Task] {
