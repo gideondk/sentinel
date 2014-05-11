@@ -66,6 +66,20 @@ class RequestResponseSpec extends WordSpec {
       result.map(_.payload) should equal(items)
     }
 
+    //    "test a" in new TestKitSpec {
+    //      val portNumber = TestHelpers.portNumber.getAndIncrement()
+    //      val s = server(portNumber)
+    //      val c = client(portNumber)
+    //
+    //      val numberOfRequests = 90 * 1000
+    //
+    //      val items = List.range(0, numberOfRequests).map(_.toString)
+    //      val action = Future.sequence(items.map(x ⇒ (c ? SimpleCommand(ECHO, x))))
+    //      val result = Await.result(action, 5 seconds)
+    //
+    //      result.map(_.payload) should equal(items)
+    //    }
+
     "should automatically reconnect" in new TestKitSpec {
       val portNumber = TestHelpers.portNumber.getAndIncrement()
       val s = server(portNumber)
