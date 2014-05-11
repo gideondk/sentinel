@@ -66,7 +66,7 @@ class PingPongMessageStage extends SymmetricPipelineStage[PipelineContext, Simpl
 }
 
 object SimpleMessage {
-  val stages = new PingPongMessageStage >> new LengthFieldFrame(1000)
+  val stages = new PingPongMessageStage >> new LengthFieldFrame(1024 * 1024)
 
   val PING_PONG = 1
   val TOTAL_CHUNK_SIZE = 2

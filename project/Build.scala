@@ -5,7 +5,7 @@ object ApplicationBuild extends Build {
   override lazy val settings = super.settings ++
     Seq(
       name := "sentinel",
-      version := "0.7.2",
+      version := "0.7.3",
       organization := "nl.gideondk",
       scalaVersion := "2.11.0",
       parallelExecution in Test := false,

@@ -946,9 +946,12 @@ class LengthFieldFrame(maxSize: Int,
        */
       override def commandPipeline =
         { bs: ByteString ⇒
-          val length =
-            if (lengthIncludesHeader) bs.length + headerSize else bs.length
-          if (length > maxSize) Seq()
+          val length = if (lengthIncludesHeader) bs.length + headerSize else bs.length
+
+          if (length < 0 || length > maxSize)
+            throw new IllegalArgumentException(
+              s"received too large frame of size $length (max = $maxSize)")
+
           else {
             val bb = ByteString.newBuilder
             bb.putLongPart(length, headerSize)
