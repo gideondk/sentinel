@@ -95,7 +95,7 @@ class StreamHandler[Cmd, Evt](streamConsumerTimeout: Timeout = Timeout(10 second
   }
 }
 
-class Consumer[Cmd, Evt](init: Init[WithinActorContext, Cmd, Evt], 
+class Consumer[Cmd, Evt](init: Init[WithinActorContext, Cmd, Evt],
                          streamChunkTimeout: Timeout = Timeout(120 seconds),
                          streamConsumerTimeout: Timeout = Timeout(10 seconds)) extends Actor with ActorLogging {
   import Registration._
