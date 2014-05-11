@@ -47,10 +47,11 @@ class FullDuplexSpec extends WordSpec with ShouldMatchers {
     "be able to exchange multiple requests simultaneously" in new TestKitSpec {
       val portNumber = TestHelpers.portNumber.getAndIncrement()
       val s = server(portNumber)
+      Thread.sleep(500)
 
       val c = client(portNumber)
       val secC = client(portNumber)
-      Thread.sleep(1000)
+      Thread.sleep(500)
 
       val numberOfRequests = 10
 

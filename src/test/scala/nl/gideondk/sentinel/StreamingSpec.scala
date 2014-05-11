@@ -105,6 +105,9 @@ class StreamingSpec extends WordSpec {
         takSome ← (c ?->> SimpleCommand(GENERATE_NUMBERS, count.toString)).flatMap(x ⇒ x &> Enumeratee.take(1) |>>> Iteratee.getChunks)
         takSome ← (c ?->> SimpleCommand(GENERATE_NUMBERS, count.toString)).flatMap(x ⇒ x &> Enumeratee.take(1) &> Enumeratee.map(x ⇒ throw new Exception("")) |>>> Iteratee.getChunks).recover { case e ⇒ () }
         act ← c ? SimpleCommand(PING_PONG, "")
+        act ← c ? SimpleCommand(PING_PONG, "")
+        takSome ← (c ?->> SimpleCommand(GENERATE_NUMBERS, count.toString)).flatMap(x ⇒ x |>>> Iteratee.getChunks)
+        act ← c ? SimpleCommand(PING_PONG, "")
       } yield act
 
       val result = Try(Await.result(newAct, 5 seconds))

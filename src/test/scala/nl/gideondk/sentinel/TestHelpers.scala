@@ -13,7 +13,7 @@ import java.util.concurrent.atomic.AtomicInteger
 
 import protocols._
 
-abstract class TestKitSpec extends TestKit(ActorSystem())
+abstract class TestKitSpec extends TestKit(ActorSystem(java.util.UUID.randomUUID.toString))
     with Suite
     with ShouldMatchers
     with BeforeAndAfterAll
@@ -56,6 +56,6 @@ object LargerPayloadTestHelper {
 
     while (stringB.length() + paddingString.length() < size) stringB.append(paddingString)
 
-    ByteString(stringB.toString().getBytes())
+    stringB.toString()
   }
 }
