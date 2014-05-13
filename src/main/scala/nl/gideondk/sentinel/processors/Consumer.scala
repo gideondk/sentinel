@@ -199,7 +199,7 @@ class Consumer[Cmd, Evt](init: Init[WithinActorContext, Cmd, Evt],
         }
 
       case ConsumeStreamChunk ⇒
-        handleStreamData(StreamChunk(data)) // Should eventually seperate data chunks and stream chunks for better socket consistency handling
+        handleStreamData(StreamChunk(data))
       case EndStream ⇒
         handleStreamData(EndOfStream[Evt]())
       case ConsumeChunkAndEndStream ⇒

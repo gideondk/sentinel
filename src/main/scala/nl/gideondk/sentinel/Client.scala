@@ -59,19 +59,20 @@ object Client {
   }
 
   def apply[Cmd, Evt](serverHost: String, serverPort: Int, routerConfig: RouterConfig,
-                      description: String = "Sentinel Client", stages: ⇒ PipelineStage[PipelineContext, Cmd, ByteString, Evt, ByteString], workerReconnectTime: FiniteDuration = 2 seconds, resolver: Resolver[Evt, Cmd] = Client.defaultResolver[Cmd, Evt], lowBytes: Long = 100L, highBytes: Long = 5000L, maxBufferSize: Long = 20000L)(implicit system: ActorSystem) = {
-    val core = system.actorOf(Props(new ClientCore[Cmd, Evt](routerConfig, description, workerReconnectTime, stages, resolver)(lowBytes, highBytes, maxBufferSize)), name = "sentinel-client-" + java.util.UUID.randomUUID.toString)
+                      description: String = "Sentinel Client", stages: ⇒ PipelineStage[PipelineContext, Cmd, ByteString, Evt, ByteString], workerReconnectTime: FiniteDuration = 2 seconds, resolver: Resolver[Evt, Cmd] = Client.defaultResolver[Cmd, Evt], lowBytes: Long = 100L, highBytes: Long = 1024 * 10, maxBufferSize: Long = 1024 * 1024 * 20)(implicit system: ActorSystem) = {
+    val core = system.actorOf(Props(new ClientCore[Cmd, Evt](routerConfig, description, workerReconnectTime, stages, resolver)(lowBytes, highBytes, maxBufferSize)).withDispatcher("nl.gideondk.sentinel.sentinel-dispatcher"), name = "sentinel-client-" + java.util.UUID.randomUUID.toString)
+
     core ! Client.ConnectToServer(new InetSocketAddress(serverHost, serverPort))
     new Client[Cmd, Evt] {
       val actor = core
     }
   }
 
-  def randomRouting[Cmd, Evt](serverHost: String, serverPort: Int, numberOfConnections: Int, description: String = "Sentinel Client", stages: ⇒ PipelineStage[PipelineContext, Cmd, ByteString, Evt, ByteString], workerReconnectTime: FiniteDuration = 2 seconds, resolver: Resolver[Evt, Cmd] = Client.defaultResolver[Cmd, Evt], lowBytes: Long = 100L, highBytes: Long = 5000L, maxBufferSize: Long = 20000L)(implicit system: ActorSystem) = {
+  def randomRouting[Cmd, Evt](serverHost: String, serverPort: Int, numberOfConnections: Int, description: String = "Sentinel Client", stages: ⇒ PipelineStage[PipelineContext, Cmd, ByteString, Evt, ByteString], workerReconnectTime: FiniteDuration = 2 seconds, resolver: Resolver[Evt, Cmd] = Client.defaultResolver[Cmd, Evt], lowBytes: Long = 100L, highBytes: Long = 1024 * 10, maxBufferSize: Long = 1024 * 1024 * 20)(implicit system: ActorSystem) = {
     apply(serverHost, serverPort, RandomRouter(numberOfConnections), description, stages, workerReconnectTime, resolver, lowBytes, highBytes, maxBufferSize)
   }
 
-  def roundRobinRouting[Cmd, Evt](serverHost: String, serverPort: Int, numberOfConnections: Int, description: String = "Sentinel Client", stages: ⇒ PipelineStage[PipelineContext, Cmd, ByteString, Evt, ByteString], workerReconnectTime: FiniteDuration = 2 seconds, resolver: Resolver[Evt, Cmd] = Client.defaultResolver[Cmd, Evt], lowBytes: Long = 100L, highBytes: Long = 5000L, maxBufferSize: Long = 20000L)(implicit system: ActorSystem) = {
+  def roundRobinRouting[Cmd, Evt](serverHost: String, serverPort: Int, numberOfConnections: Int, description: String = "Sentinel Client", stages: ⇒ PipelineStage[PipelineContext, Cmd, ByteString, Evt, ByteString], workerReconnectTime: FiniteDuration = 2 seconds, resolver: Resolver[Evt, Cmd] = Client.defaultResolver[Cmd, Evt], lowBytes: Long = 100L, highBytes: Long = 1024 * 10, maxBufferSize: Long = 1024 * 1024 * 20)(implicit system: ActorSystem) = {
     apply(serverHost, serverPort, RoundRobinRouter(numberOfConnections), description, stages, workerReconnectTime, resolver, lowBytes, highBytes, maxBufferSize)
   }
 }
@@ -120,7 +121,7 @@ class ClientAntennaManager[Cmd, Evt](address: InetSocketAddress, stages: ⇒ Pip
 }
 
 class ClientCore[Cmd, Evt](routerConfig: RouterConfig, description: String, reconnectDuration: FiniteDuration,
-                           stages: ⇒ PipelineStage[PipelineContext, Cmd, ByteString, Evt, ByteString], Resolver: Resolver[Evt, Cmd], workerDescription: String = "Sentinel Client Worker")(lowBytes: Long, highBytes: Long, maxBufferSize: Long) extends Actor with ActorLogging {
+                           stages: ⇒ PipelineStage[PipelineContext, Cmd, ByteString, Evt, ByteString], Resolver: Resolver[Evt, Cmd], workerDescription: String = "Sentinel Client Worker")(lowBytes: Long, highBytes: Long, maxBufferSize: Long) extends Actor with ActorLogging with Stash {
 
   import context.dispatcher
 
@@ -130,6 +131,7 @@ class ClientCore[Cmd, Evt](routerConfig: RouterConfig, description: String, reco
   private case class ReconnectRouter(address: InetSocketAddress)
 
   var coreRouter: Option[ActorRef] = None
+  var reconnecting = false
 
   def antennaManagerProto(address: InetSocketAddress) =
     new ClientAntennaManager(address, stages, Resolver)(lowBytes, highBytes, maxBufferSize)
@@ -149,6 +151,8 @@ class ClientCore[Cmd, Evt](routerConfig: RouterConfig, description: String, reco
         context.watch(router)
         addresses = addresses ++ List(x.addr -> Some(router))
         coreRouter = Some(context.system.actorOf(Props.empty.withRouter(RoundRobinRouter(routees = addresses.map(_._2).flatten))))
+        reconnecting = false
+        unstashAll()
       } else {
         log.debug("Client is already connected to: " + x.addr)
       }
@@ -161,15 +165,15 @@ class ClientCore[Cmd, Evt](routerConfig: RouterConfig, description: String, reco
           addresses = addresses diff addresses.find(_._2 == Some(actor)).toList
           coreRouter = Some(context.system.actorOf(Props.empty.withRouter(RoundRobinRouter(routees = addresses.map(_._2).flatten))))
           log.error("Router for: " + r._1 + " died, restarting in: " + reconnectDuration.toString())
+          reconnecting = true
           context.system.scheduler.scheduleOnce(reconnectDuration, self, Client.ConnectToServer(r._1))
         case None ⇒
       }
 
     case x: Command[Cmd, Evt] ⇒
       coreRouter match {
-        case Some(r) ⇒
-          r forward x
-        case None ⇒ x.registration.promise.failure(new Exception("No connection(s) available"))
+        case Some(r) ⇒ if (reconnecting) stash() else r forward x
+        case None    ⇒ x.registration.promise.failure(new Exception("No connection(s) available"))
       }
 
     case _ ⇒

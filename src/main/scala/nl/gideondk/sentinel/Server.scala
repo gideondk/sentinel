@@ -129,7 +129,7 @@ class ServerCore[Cmd, Evt](port: Int, description: String, stages: ⇒ PipelineS
 }
 
 object Server {
-  def apply[Evt, Cmd](serverPort: Int, resolver: Resolver[Evt, Cmd], description: String = "Sentinel Server", stages: ⇒ PipelineStage[PipelineContext, Cmd, ByteString, Evt, ByteString], lowBytes: Long = 100L, highBytes: Long = 50 * 1024L, maxBufferSize: Long = 1000L * 1024L)(implicit system: ActorSystem) = {
+  def apply[Evt, Cmd](serverPort: Int, resolver: Resolver[Evt, Cmd], description: String = "Sentinel Server", stages: ⇒ PipelineStage[PipelineContext, Cmd, ByteString, Evt, ByteString], lowBytes: Long = 100L, highBytes: Long = 50 * 1024L, maxBufferSize: Long = 1000L * 1024L * 50)(implicit system: ActorSystem) = {
     new Server[Evt, Cmd] {
       val actor = system.actorOf(Props(new ServerCore(serverPort, description, stages, resolver)(lowBytes, highBytes, maxBufferSize)).withDispatcher("nl.gideondk.sentinel.sentinel-dispatcher"), name = "sentinel-server-" + java.util.UUID.randomUUID.toString)
     }

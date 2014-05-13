@@ -78,9 +78,9 @@ class Producer[Cmd, Evt](init: Init[WithinActorContext, Cmd, Evt], streamChunkTi
       case x: ProduceStream[Evt, Cmd] ⇒ initStreamProducer(data, x.f)
 
       case x: ConsumeStream[Evt, Cmd] ⇒
-        val imcomingStreamPromise = Promise[Enumerator[Evt]]()
-        context.parent ! Registration.StreamReplyRegistration(imcomingStreamPromise)
-        imcomingStreamPromise.future flatMap ((s) ⇒ initStreamConsumer(data, x.f(_)(s)))
+        val incomingStreamPromise = Promise[Enumerator[Evt]]()
+        context.parent ! Registration.StreamReplyRegistration(incomingStreamPromise)
+        incomingStreamPromise.future flatMap ((s) ⇒ initStreamConsumer(data, x.f(_)(s)))
     }
 
     future.onFailure {
@@ -121,6 +121,7 @@ class Producer[Cmd, Evt](init: Init[WithinActorContext, Cmd, Evt], streamChunkTi
     case x: HandleAsyncResult[Cmd] ⇒ context.parent ! Reply.Response(x.response)
     case x: HandleStreamResult[Cmd] ⇒
       val worker = self
+      // TODO: What to do when producing Enumerator times out, send error, close stream and continue producing?
       implicit val timeout = streamChunkTimeout
 
       val consumer = (x.stream |>>> Iteratee.foldM(())((a, b) ⇒ (worker ? StreamProducerChunk(b)).map(x ⇒ ()))).flatMap(x ⇒ (worker ? StreamProducerEnded))
