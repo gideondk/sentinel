@@ -94,5 +94,18 @@ class StreamingSpec extends WordSpec with ShouldMatchers {
 
       result.map(_.payload.toInt).sum should equal(localLength * numberOfActions)
     }
+
+    "be able to handle exceptions thrown in streams correctly" in new TestKitSpec {
+      val portNumber = TestHelpers.portNumber.getAndIncrement()
+      val s = server(portNumber)
+      val c = client(portNumber)
+
+      val action = c ?->> SimpleCommand(GENERATE_ERROR, (""))
+
+      evaluating {
+        val stream = action.copoint
+        Await.result(stream |>>> Iteratee.getChunks, 5 seconds)
+      } should produce[nl.gideondk.sentinel.processors.Consumer.ConsumerException[SimpleMessageFormat]]
+    }
   }
 }

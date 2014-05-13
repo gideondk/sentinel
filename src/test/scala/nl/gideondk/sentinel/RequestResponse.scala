@@ -43,12 +43,32 @@ class RequestResponseSpec extends WordSpec with Matchers {
       result.isSuccess should equal(true)
     }
 
+    "be able to request a multiple responses from a server" in new TestKitSpec {
+      val portNumber = TestHelpers.portNumber.getAndIncrement()
+      val s = server(portNumber)
+      val c = client(portNumber)
+
+      val action = for {
+        _ ← c ? SimpleCommand(PING_PONG, "")
+        _ ← c ? SimpleCommand(PING_PONG, "")
+        _ ← c ? SimpleCommand(PING_PONG, "")
+        _ ← c ? SimpleCommand(PING_PONG, "")
+        _ ← c ? SimpleCommand(PING_PONG, "")
+        _ ← c ? SimpleCommand(PING_PONG, "")
+        _ ← c ? SimpleCommand(PING_PONG, "")
+        r ← c ? SimpleCommand(PING_PONG, "")
+      } yield r
+      val result = action.run
+
+      result.isSuccess should equal(true)
+    }
+
     "be able to requests multiple requests from a server" in new TestKitSpec {
       val portNumber = TestHelpers.portNumber.getAndIncrement()
       val s = server(portNumber)
       val c = client(portNumber)
 
-      val numberOfRequests = 20 * 1000
+      val numberOfRequests = 100
 
       val action = Task.sequenceSuccesses(List.fill(numberOfRequests)(c ? SimpleCommand(PING_PONG, "")))
       val result = action.run
@@ -62,7 +82,7 @@ class RequestResponseSpec extends WordSpec with Matchers {
       val s = server(portNumber)
       val c = client(portNumber)
 
-      val numberOfRequests = 90 * 1000
+      val numberOfRequests = 20 * 1000
 
       val items = List.range(0, numberOfRequests).map(_.toString)
       val action = Task.sequenceSuccesses(items.map(x ⇒ (c ? SimpleCommand(ECHO, x))))
