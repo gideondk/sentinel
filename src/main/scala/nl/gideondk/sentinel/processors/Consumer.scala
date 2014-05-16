@@ -10,6 +10,7 @@ import akka.pattern.ask
 import akka.util.Timeout
 
 import play.api.libs.iteratee._
+
 import nl.gideondk.sentinel._
 
 object Consumer {
@@ -106,30 +107,38 @@ class Consumer[Cmd, Evt](init: Init[WithinActorContext, Cmd, Evt],
 
   implicit val timeout = streamChunkTimeout
 
-  var replyRegistrations = Queue[ReplyRegistration[Evt]]()
-  var streamRegistrations = Queue[StreamReplyRegistration[Evt]]()
+  var registrations = Queue[Registration[Evt, _]]()
 
   var streamBuffer = Queue[ConsumerData[Evt]]()
 
   var currentRunningStream: Option[ActorRef] = None
 
   override def postStop() = {
-    replyRegistrations.foreach(_.promise.failure(new Exception("Actor quit unexpectedly")))
-    streamRegistrations.foreach(_.promise.failure(new Exception("Actor quit unexpectedly")))
+    registrations.foreach(_.promise.failure(new Exception("Actor quit unexpectedly")))
   }
 
   def processAction(data: Evt, action: ConsumerAction) = {
-
       def handleConsumerData(cd: ConsumerData[Evt]) = {
-        val registration = replyRegistrations.head
-        replyRegistrations = replyRegistrations.tail
+        val registration = registrations.head
+        registrations = registrations.tail
 
-        registration.promise.completeWith(cd match {
-          case x: DataChunk[Evt] ⇒
-            Future.successful(x.c)
-          case x: ErrorChunk[Evt] ⇒
-            Future.failed(ConsumerException(x.c))
-        })
+        registration match {
+          case r: ReplyRegistration[_] ⇒
+            r.promise.completeWith(cd match {
+              case x: DataChunk[Evt] ⇒
+                Future.successful(x.c)
+              case x: ErrorChunk[Evt] ⇒
+                Future.failed(ConsumerException(x.c))
+            })
+
+          case r: StreamReplyRegistration[_] ⇒
+            r.promise.completeWith(cd match {
+              case x: DataChunk[Evt] ⇒
+                Future.failed(new Exception("Unexpectedly received a normal chunk instead of stream chunk"))
+              case x: ErrorChunk[Evt] ⇒
+                Future.failed(ConsumerException(x.c))
+            })
+        }
       }
 
       def handleStreamData(cd: ConsumerData[Evt]) = {
@@ -143,44 +152,51 @@ class Consumer[Cmd, Evt](init: Init[WithinActorContext, Cmd, Evt],
             x ! cd
 
           case None ⇒
-            streamRegistrations.headOption match {
+            registrations.headOption match {
               case Some(registration) ⇒
-                val streamHandler = context.actorOf(Props(new StreamHandler(streamConsumerTimeout)), name = "streamHandler-" + java.util.UUID.randomUUID.toString)
-                currentRunningStream = Some(streamHandler)
+                registration match {
+                  case r: ReplyRegistration[_] ⇒
+                    throw new Exception("Unexpectedly received a stream chunk instead of normal reply") // TODO: use specific exception classes 
+                  case r: StreamReplyRegistration[_] ⇒ {
+                    val streamHandler = context.actorOf(Props(new StreamHandler(streamConsumerTimeout)), name = "streamHandler-" + java.util.UUID.randomUUID.toString)
+                    currentRunningStream = Some(streamHandler)
 
-                val worker = streamHandler
+                    val worker = streamHandler
 
-                // TODO: handle stream chunk timeout better
-                val resource = Enumerator.generateM[Evt] {
-                  (worker ? AskNextChunk).mapTo[Promise[ConsumerData[Evt]]].flatMap(_.future).flatMap {
-                    _ match {
-                      case x: EndOfStream[Evt] ⇒ (worker ? ReleaseStreamConsumer) flatMap (u ⇒ Future(None))
-                      case x: StreamChunk[Evt] ⇒ Future(Some(x.c))
-                      case x: ErrorChunk[Evt]  ⇒ (worker ? ReleaseStreamConsumer) flatMap (u ⇒ Future.failed(ConsumerException(x.c)))
-                    }
-                  }
-                }
-
-                  def dequeueStreamBuffer(): Unit = {
-                    streamBuffer.headOption match {
-                      case Some(x) ⇒
-                        streamBuffer = streamBuffer.tail
-                        x match {
-                          case x: EndOfStream[Evt] ⇒
-                            worker ! x
-                          case x ⇒
-                            worker ! x
-                            dequeueStreamBuffer()
+                    // TODO: handle stream chunk timeout better
+                    val resource = Enumerator.generateM[Evt] {
+                      (worker ? AskNextChunk).mapTo[Promise[ConsumerData[Evt]]].flatMap(_.future).flatMap {
+                        _ match {
+                          case x: EndOfStream[Evt] ⇒ (worker ? ReleaseStreamConsumer) flatMap (u ⇒ Future(None))
+                          case x: StreamChunk[Evt] ⇒ Future(Some(x.c))
+                          case x: ErrorChunk[Evt]  ⇒ (worker ? ReleaseStreamConsumer) flatMap (u ⇒ Future.failed(ConsumerException(x.c)))
                         }
-                      case None ⇒ ()
+                      }
                     }
+
+                      def dequeueStreamBuffer(): Unit = {
+                        streamBuffer.headOption match {
+                          case Some(x) ⇒
+                            streamBuffer = streamBuffer.tail
+                            x match {
+                              case x: EndOfStream[Evt] ⇒
+                                worker ! x
+                              case x ⇒
+                                worker ! x
+                                dequeueStreamBuffer()
+                            }
+                          case None ⇒ ()
+                        }
+                      }
+
+                    dequeueStreamBuffer()
+                    worker ! cd
+
+                    registrations = registrations.tail
+                    r.promise success resource
                   }
 
-                dequeueStreamBuffer()
-                worker ! cd
-
-                streamRegistrations = streamRegistrations.tail
-                registration.promise success resource
+                }
 
               case None ⇒
                 streamBuffer :+= cd
@@ -211,10 +227,10 @@ class Consumer[Cmd, Evt](init: Init[WithinActorContext, Cmd, Evt],
 
   def handleRegistrations: Receive = {
     case rc: ReplyRegistration[Evt] ⇒
-      replyRegistrations :+= rc
+      registrations :+= rc
 
     case rc: StreamReplyRegistration[Evt] ⇒
-      streamRegistrations :+= rc
+      registrations :+= rc
 
   }
 
