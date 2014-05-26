@@ -43,7 +43,7 @@ You can install Sentinel through source (by publishing it into your local Ivy re
 Or by adding the repo:
 <notextile><pre><code>"gideondk-repo" at "https://raw.github.com/gideondk/gideondk-mvn-repo/master"</code></pre></notextile>
 
-to your SBT configuration and adding the `SNAPSHOT` to your library dependencies:
+to your SBT configuration and adding Sentinel to your library dependencies (currently only build against Scala 2.11):
 
 <notextile><pre><code>libraryDependencies ++= Seq(
   "nl.gideondk" %% "sentinel" % "0.7.4"
