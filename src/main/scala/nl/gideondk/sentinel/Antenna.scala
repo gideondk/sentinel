@@ -1,21 +1,23 @@
 package nl.gideondk.sentinel
 
+import akka.actor._
+import akka.io.TcpPipelineHandler.{ Init, WithinActorContext }
+import akka.io._
+import nl.gideondk.sentinel.processors._
+import scala.collection.immutable.Queue
+
 import scala.concurrent.Future
 
-import akka.actor._
-
-import akka.io._
-import akka.io.TcpPipelineHandler.{ Init, WithinActorContext }
-
-import processors._
-
-class Antenna[Cmd, Evt](init: Init[WithinActorContext, Cmd, Evt], Resolver: Resolver[Evt, Cmd]) extends Actor with ActorLogging with Stash {
+class Antenna[Cmd, Evt](init: Init[WithinActorContext, Cmd, Evt], resolver: Resolver[Evt, Cmd], allowPipelining: Boolean = true) extends Actor with ActorLogging with Stash {
 
   import context.dispatcher
 
   def active(tcpHandler: ActorRef): Receive = {
     val consumer = context.actorOf(Props(new Consumer(init)), name = "resolver")
     val producer = context.actorOf(Props(new Producer(init)).withDispatcher("nl.gideondk.sentinel.sentinel-dispatcher"), name = "producer")
+
+    var commandQueue = Queue.empty[init.Command]
+    var commandInProcess = false
 
     context watch tcpHandler
     context watch producer
@@ -33,14 +35,38 @@ class Antenna[Cmd, Evt](init: Init[WithinActorContext, Cmd, Evt], Resolver: Reso
           stash()
       }
 
+      def popCommand() = if (!commandQueue.isEmpty) {
+        val cmd = commandQueue.head
+        commandQueue = commandQueue.tail
+        tcpHandler ! cmd
+      } else {
+        commandInProcess = false
+      }
+
       def handleCommands: Receive = {
         case x: Command.Ask[Cmd, Evt] ⇒
           consumer ! x.registration
-          tcpHandler ! init.Command(x.payload)
+
+          val cmd = init.Command(x.payload)
+          if (allowPipelining) tcpHandler ! cmd
+          else if (commandInProcess) {
+            commandQueue :+= cmd
+          } else {
+            commandInProcess = true
+            tcpHandler ! cmd
+          }
 
         case x: Command.AskStream[Cmd, Evt] ⇒
           consumer ! x.registration
-          tcpHandler ! init.Command(x.payload)
+
+          val cmd = init.Command(x.payload)
+          if (allowPipelining) tcpHandler ! cmd
+          else if (commandInProcess) {
+            commandQueue :+= cmd
+          } else {
+            commandInProcess = true
+            tcpHandler ! cmd
+          }
 
         case x: Command.SendStream[Cmd, Evt] ⇒
           consumer ! x.registration
@@ -60,10 +86,17 @@ class Antenna[Cmd, Evt](init: Init[WithinActorContext, Cmd, Evt], Resolver: Reso
         consumer ! x
 
       case init.Event(data) ⇒ {
-        Resolver.process(data) match {
+        resolver.process(data) match {
           case x: ProducerAction[Evt, Cmd] ⇒ producer ! ProducerActionAndData[Evt, Cmd](x, data)
-          case x: ConsumerAction           ⇒ consumer ! ConsumerActionAndData[Evt](x, data)
+
+          case ConsumerAction.ConsumeStreamChunk ⇒
+            consumer ! ConsumerActionAndData[Evt](ConsumerAction.ConsumeStreamChunk, data)
+
+          case x: ConsumerAction ⇒
+            consumer ! ConsumerActionAndData[Evt](x, data)
+            if (!allowPipelining) popCommand()
         }
+
       }
 
       case BackpressureBuffer.HighWatermarkReached ⇒ {

@@ -22,6 +22,7 @@ class StreamingSpec extends WordSpec {
   implicit val duration = Duration(5, SECONDS)
 
   def client(portNumber: Int)(implicit system: ActorSystem) = Client.randomRouting("localhost", portNumber, 1, "Worker", SimpleMessage.stages, 0.5 seconds, SimpleServerHandler)(system)
+  def nonPipelinedClient(portNumber: Int)(implicit system: ActorSystem) = Client.randomRouting("localhost", portNumber, 1, "Worker", SimpleMessage.stages, 0.5 seconds, SimpleServerHandler, false)(system)
 
   def server(portNumber: Int)(implicit system: ActorSystem) = {
     val s = Server(portNumber, SimpleServerHandler, stages = SimpleMessage.stages)(system)
@@ -79,6 +80,24 @@ class StreamingSpec extends WordSpec {
       val portNumber = TestHelpers.portNumber.getAndIncrement()
       val s = server(portNumber)
       val c = client(portNumber)
+
+      val count = 500
+      val numberOfActions = 8
+
+      val streamAction = Future.sequence(List.fill(numberOfActions)((c ?->> SimpleCommand(GENERATE_NUMBERS, count.toString)).flatMap(x ⇒ x |>>> Iteratee.getChunks)))
+      val action = Future.sequence(List.fill(count)(c ? SimpleCommand(PING_PONG, "")))
+
+      val actions = Future.sequence(List(streamAction, action))
+
+      val result = Try(Await.result(actions.map(_.flatten), 5 seconds))
+
+      result.isSuccess should equal(true)
+    }
+
+    "be able to receive multiple streams and normal commands simultaneously from a server in a non-pipelined environment" in new TestKitSpec {
+      val portNumber = TestHelpers.portNumber.getAndIncrement()
+      val s = server(portNumber)
+      val c = nonPipelinedClient(portNumber)
 
       val count = 500
       val numberOfActions = 8

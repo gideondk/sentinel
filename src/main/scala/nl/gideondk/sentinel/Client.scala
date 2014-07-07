@@ -59,24 +59,24 @@ object Client {
   }
 
   def apply[Cmd, Evt](serverHost: String, serverPort: Int, routerConfig: RouterConfig,
-                      description: String = "Sentinel Client", stages: ⇒ PipelineStage[PipelineContext, Cmd, ByteString, Evt, ByteString], workerReconnectTime: FiniteDuration = 2 seconds, resolver: Resolver[Evt, Cmd] = Client.defaultResolver[Cmd, Evt], lowBytes: Long = 100L, highBytes: Long = 5000L, maxBufferSize: Long = 20000L)(implicit system: ActorSystem) = {
-    val core = system.actorOf(Props(new ClientCore[Cmd, Evt](routerConfig, description, workerReconnectTime, stages, resolver)(lowBytes, highBytes, maxBufferSize)).withDispatcher("nl.gideondk.sentinel.sentinel-dispatcher"), name = "sentinel-client-" + java.util.UUID.randomUUID.toString)
+                      description: String = "Sentinel Client", stages: ⇒ PipelineStage[PipelineContext, Cmd, ByteString, Evt, ByteString], workerReconnectTime: FiniteDuration = 2 seconds, resolver: Resolver[Evt, Cmd] = Client.defaultResolver[Cmd, Evt], allowPipelining: Boolean = true, lowBytes: Long = 100L, highBytes: Long = 5000L, maxBufferSize: Long = 20000L)(implicit system: ActorSystem) = {
+    val core = system.actorOf(Props(new ClientCore[Cmd, Evt](routerConfig, description, workerReconnectTime, stages, resolver, allowPipelining)(lowBytes, highBytes, maxBufferSize)).withDispatcher("nl.gideondk.sentinel.sentinel-dispatcher"), name = "sentinel-client-" + java.util.UUID.randomUUID.toString)
     core ! Client.ConnectToServer(new InetSocketAddress(serverHost, serverPort))
     new Client[Cmd, Evt] {
       val actor = core
     }
   }
 
-  def randomRouting[Cmd, Evt](serverHost: String, serverPort: Int, numberOfConnections: Int, description: String = "Sentinel Client", stages: ⇒ PipelineStage[PipelineContext, Cmd, ByteString, Evt, ByteString], workerReconnectTime: FiniteDuration = 2 seconds, resolver: Resolver[Evt, Cmd] = Client.defaultResolver[Cmd, Evt], lowBytes: Long = 100L, highBytes: Long = 5000L, maxBufferSize: Long = 20000L)(implicit system: ActorSystem) = {
-    apply(serverHost, serverPort, RandomRouter(numberOfConnections), description, stages, workerReconnectTime, resolver, lowBytes, highBytes, maxBufferSize)
+  def randomRouting[Cmd, Evt](serverHost: String, serverPort: Int, numberOfConnections: Int, description: String = "Sentinel Client", stages: ⇒ PipelineStage[PipelineContext, Cmd, ByteString, Evt, ByteString], workerReconnectTime: FiniteDuration = 2 seconds, resolver: Resolver[Evt, Cmd] = Client.defaultResolver[Cmd, Evt], allowPipelining: Boolean = true, lowBytes: Long = 100L, highBytes: Long = 5000L, maxBufferSize: Long = 20000L)(implicit system: ActorSystem) = {
+    apply(serverHost, serverPort, RandomRouter(numberOfConnections), description, stages, workerReconnectTime, resolver, allowPipelining, lowBytes, highBytes, maxBufferSize)
   }
 
-  def roundRobinRouting[Cmd, Evt](serverHost: String, serverPort: Int, numberOfConnections: Int, description: String = "Sentinel Client", stages: ⇒ PipelineStage[PipelineContext, Cmd, ByteString, Evt, ByteString], workerReconnectTime: FiniteDuration = 2 seconds, resolver: Resolver[Evt, Cmd] = Client.defaultResolver[Cmd, Evt], lowBytes: Long = 100L, highBytes: Long = 5000L, maxBufferSize: Long = 20000L)(implicit system: ActorSystem) = {
-    apply(serverHost, serverPort, RoundRobinRouter(numberOfConnections), description, stages, workerReconnectTime, resolver, lowBytes, highBytes, maxBufferSize)
+  def roundRobinRouting[Cmd, Evt](serverHost: String, serverPort: Int, numberOfConnections: Int, description: String = "Sentinel Client", stages: ⇒ PipelineStage[PipelineContext, Cmd, ByteString, Evt, ByteString], workerReconnectTime: FiniteDuration = 2 seconds, resolver: Resolver[Evt, Cmd] = Client.defaultResolver[Cmd, Evt], allowPipelining: Boolean = true, lowBytes: Long = 100L, highBytes: Long = 5000L, maxBufferSize: Long = 20000L)(implicit system: ActorSystem) = {
+    apply(serverHost, serverPort, RoundRobinRouter(numberOfConnections), description, stages, workerReconnectTime, resolver, allowPipelining, lowBytes, highBytes, maxBufferSize)
   }
 }
 
-class ClientAntennaManager[Cmd, Evt](address: InetSocketAddress, stages: ⇒ PipelineStage[PipelineContext, Cmd, ByteString, Evt, ByteString], Resolver: Resolver[Evt, Cmd])(lowBytes: Long, highBytes: Long, maxBufferSize: Long) extends Actor with ActorLogging with Stash {
+class ClientAntennaManager[Cmd, Evt](address: InetSocketAddress, stages: ⇒ PipelineStage[PipelineContext, Cmd, ByteString, Evt, ByteString], resolver: Resolver[Evt, Cmd], allowPipelining: Boolean = true)(lowBytes: Long, highBytes: Long, maxBufferSize: Long) extends Actor with ActorLogging with Stash {
   val tcp = akka.io.IO(Tcp)(context.system)
 
   override def preStart = tcp ! Tcp.Connect(address)
@@ -97,7 +97,7 @@ class ClientAntennaManager[Cmd, Evt](address: InetSocketAddress, stages: ⇒ Pip
           new TcpReadWriteAdapter >>
           new BackpressureBuffer(lowBytes, highBytes, maxBufferSize))
 
-      val antenna = context.actorOf(Props(new Antenna(init, Resolver)).withDispatcher("nl.gideondk.sentinel.sentinel-dispatcher"))
+      val antenna = context.actorOf(Props(new Antenna(init, resolver, allowPipelining)).withDispatcher("nl.gideondk.sentinel.sentinel-dispatcher"))
       val handler = context.actorOf(TcpPipelineHandler.props(init, sender, antenna).withDeploy(Deploy.local))
       context watch handler
 
@@ -120,7 +120,7 @@ class ClientAntennaManager[Cmd, Evt](address: InetSocketAddress, stages: ⇒ Pip
 }
 
 class ClientCore[Cmd, Evt](routerConfig: RouterConfig, description: String, reconnectDuration: FiniteDuration,
-                           stages: ⇒ PipelineStage[PipelineContext, Cmd, ByteString, Evt, ByteString], Resolver: Resolver[Evt, Cmd], workerDescription: String = "Sentinel Client Worker")(lowBytes: Long, highBytes: Long, maxBufferSize: Long) extends Actor with ActorLogging with Stash {
+                           stages: ⇒ PipelineStage[PipelineContext, Cmd, ByteString, Evt, ByteString], resolver: Resolver[Evt, Cmd], allowPipelining: Boolean = true, workerDescription: String = "Sentinel Client Worker")(lowBytes: Long, highBytes: Long, maxBufferSize: Long) extends Actor with ActorLogging with Stash {
 
   import context.dispatcher
 
@@ -133,7 +133,7 @@ class ClientCore[Cmd, Evt](routerConfig: RouterConfig, description: String, reco
   var reconnecting = false
 
   def antennaManagerProto(address: InetSocketAddress) =
-    new ClientAntennaManager(address, stages, Resolver)(lowBytes, highBytes, maxBufferSize)
+    new ClientAntennaManager(address, stages, resolver, allowPipelining)(lowBytes, highBytes, maxBufferSize)
 
   def routerProto(address: InetSocketAddress) =
     context.actorOf(Props(antennaManagerProto(address)).withRouter(routerConfig).withDispatcher("nl.gideondk.sentinel.sentinel-dispatcher"))
