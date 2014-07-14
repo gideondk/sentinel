@@ -46,7 +46,7 @@ Or by adding the repo:
 to your SBT configuration and adding Sentinel to your library dependencies (currently only build against Scala 2.11):
 
 <notextile><pre><code>libraryDependencies ++= Seq(
-  "nl.gideondk" %% "sentinel" % "0.7.5"
+  "nl.gideondk" %% "sentinel" % "0.7.5.1"
 )
 </code></pre></notextile>
 
