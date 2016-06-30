@@ -68,11 +68,11 @@ object Client {
   }
 
   def randomRouting[Cmd, Evt](serverHost: String, serverPort: Int, numberOfConnections: Int, description: String = "Sentinel Client", stages: ⇒ PipelineStage[PipelineContext, Cmd, ByteString, Evt, ByteString], workerReconnectTime: FiniteDuration = 2 seconds, resolver: Resolver[Evt, Cmd] = Client.defaultResolver[Cmd, Evt], allowPipelining: Boolean = true, lowBytes: Long = 100L, highBytes: Long = 5000L, maxBufferSize: Long = 20000L)(implicit system: ActorSystem) = {
-    apply(serverHost, serverPort, RandomRouter(numberOfConnections), description, stages, workerReconnectTime, resolver, allowPipelining, lowBytes, highBytes, maxBufferSize)
+    apply(serverHost, serverPort, RandomPool(numberOfConnections), description, stages, workerReconnectTime, resolver, allowPipelining, lowBytes, highBytes, maxBufferSize)
   }
 
   def roundRobinRouting[Cmd, Evt](serverHost: String, serverPort: Int, numberOfConnections: Int, description: String = "Sentinel Client", stages: ⇒ PipelineStage[PipelineContext, Cmd, ByteString, Evt, ByteString], workerReconnectTime: FiniteDuration = 2 seconds, resolver: Resolver[Evt, Cmd] = Client.defaultResolver[Cmd, Evt], allowPipelining: Boolean = true, lowBytes: Long = 100L, highBytes: Long = 5000L, maxBufferSize: Long = 20000L)(implicit system: ActorSystem) = {
-    apply(serverHost, serverPort, RoundRobinRouter(numberOfConnections), description, stages, workerReconnectTime, resolver, allowPipelining, lowBytes, highBytes, maxBufferSize)
+    apply(serverHost, serverPort, RoundRobinPool(numberOfConnections), description, stages, workerReconnectTime, resolver, allowPipelining, lowBytes, highBytes, maxBufferSize)
   }
 }
 
@@ -149,7 +149,7 @@ class ClientCore[Cmd, Evt](routerConfig: RouterConfig, description: String, reco
         val router = routerProto(x.addr)
         context.watch(router)
         addresses = addresses ++ List(x.addr -> Some(router))
-        coreRouter = Some(context.system.actorOf(Props.empty.withRouter(RoundRobinRouter(routees = addresses.map(_._2).flatten))))
+        coreRouter = Some(context.system.actorOf(Props.empty.withRouter(RoundRobinGroup(addresses.map(_._2).flatten.map(_.path.toString)))))
         reconnecting = false
         unstashAll()
       } else {
@@ -162,7 +162,7 @@ class ClientCore[Cmd, Evt](routerConfig: RouterConfig, description: String, reco
       terminatedRouter match {
         case Some(r) ⇒
           addresses = addresses diff addresses.find(_._2 == Some(actor)).toList
-          coreRouter = Some(context.system.actorOf(Props.empty.withRouter(RoundRobinRouter(routees = addresses.map(_._2).flatten))))
+          coreRouter = Some(context.system.actorOf(Props.empty.withRouter(RoundRobinGroup(addresses.map(_._2).flatten.map(_.path.toString)))))
           log.error("Router for: " + r._1 + " died, restarting in: " + reconnectDuration.toString())
           reconnecting = true
           context.system.scheduler.scheduleOnce(reconnectDuration, self, Client.ConnectToServer(r._1))

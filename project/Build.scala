@@ -5,9 +5,9 @@ object ApplicationBuild extends Build {
   override lazy val settings = super.settings ++
     Seq(
       name := "sentinel",
-      version := "0.7.5.1",
+      version := "0.8-SNAPSHOT",
       organization := "nl.gideondk",
-      scalaVersion := "2.11.1",
+      scalaVersion := "2.11.8",
       parallelExecution in Test := false,
       resolvers ++= Seq(Resolver.mavenLocal,
         "gideondk-repo" at "https://raw.github.com/gideondk/gideondk-mvn-repo/master",
@@ -26,8 +26,8 @@ object ApplicationBuild extends Build {
 
     "com.typesafe.play" %% "play-iteratees" % "2.3.1",
 
-    "com.typesafe.akka" %% "akka-actor" % "2.3.4",
-    "com.typesafe.akka" %% "akka-testkit" % "2.3.4" % "test"
+    "com.typesafe.akka" %% "akka-actor" %  "2.4.6",
+    "com.typesafe.akka" %% "akka-testkit" %  "2.4.6" % "test"
   )
 
   lazy val root = Project(id = "sentinel",
