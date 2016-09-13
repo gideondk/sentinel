@@ -1,5 +1,6 @@
+import sbt.Keys._
 import sbt._
-import Keys._
+import org.ensime.EnsimePlugin
 
 object ApplicationBuild extends Build {
   override lazy val settings = super.settings ++
@@ -26,20 +27,27 @@ object ApplicationBuild extends Build {
 
     "com.typesafe.play" %% "play-iteratees" % "2.3.1",
 
-    "com.typesafe.akka" %% "akka-actor" %  "2.4.6",
-    "com.typesafe.akka" %% "akka-testkit" %  "2.4.6" % "test"
+    "com.typesafe.akka" %% "akka-stream" % "2.4.8",
+    "com.typesafe.akka" %% "akka-stream-testkit" % "2.4.8",
+
+    "com.typesafe.akka" %% "akka-actor" % "2.4.8",
+    "com.typesafe.akka" %% "akka-testkit" % "2.4.8" % "test",
+
+    "com.typesafe" % "config" % "1.3.0"
   )
 
-  lazy val root = Project(id = "sentinel",
-    base = file("."),
-    settings = Project.defaultSettings ++ Seq(
+  lazy val root = Project(
+    id = "sentinel",
+    base = file(".")
+    ).settings(Project.defaultSettings ++ Seq(
       libraryDependencies ++= appDependencies,
       mainClass := Some("Main")
-    ) ++ Format.settings
-  )
+    ) ++ EnsimePlugin.projectSettings ++ Format.settings)
+  
 }
 
 object Format {
+
   import com.typesafe.sbt.SbtScalariform._
 
   lazy val settings = scalariformSettings ++ Seq(
