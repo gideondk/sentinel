@@ -22,16 +22,18 @@ object ApplicationBuild extends Build {
       publishTo := Some(Resolver.file("file", new File("/Users/gideondk/Development/gideondk-mvn-repo")))
     )
 
+  val akkaVersion = "2.4.11"
+
   val appDependencies = Seq(
-    "org.scalatest" %% "scalatest" % "2.2.0" % "test",
+    "org.scalatest" %% "scalatest" % "3.0.0" % "test",
 
     "com.typesafe.play" %% "play-iteratees" % "2.3.1",
 
-    "com.typesafe.akka" %% "akka-stream" % "2.4.8",
-    "com.typesafe.akka" %% "akka-stream-testkit" % "2.4.8",
+    "com.typesafe.akka" %% "akka-stream" % akkaVersion,
+    "com.typesafe.akka" %% "akka-stream-testkit" % akkaVersion,
 
-    "com.typesafe.akka" %% "akka-actor" % "2.4.8",
-    "com.typesafe.akka" %% "akka-testkit" % "2.4.8" % "test",
+    "com.typesafe.akka" %% "akka-actor" % akkaVersion,
+    "com.typesafe.akka" %% "akka-testkit" % akkaVersion % "test",
 
     "com.typesafe" % "config" % "1.3.0"
   )

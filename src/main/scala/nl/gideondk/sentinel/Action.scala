@@ -17,8 +17,8 @@ object ProducerAction {
 
   trait StreamReaction[E, C] extends Reaction[E, C]
 
-  trait Signal[E, C] extends Reaction[E, C] {
-    def f: E ⇒ Future[C]
+  trait Signal[In, Out] extends Reaction[In, Out] {
+    def f: In ⇒ Future[Out]
   }
 
   object Signal {

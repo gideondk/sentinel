@@ -1,37 +1,44 @@
 package nl.gideondk.sentinel
 
-import akka.actor.{Actor, Props}
 import akka.stream.BidiShape
-import akka.stream.scaladsl.{BidiFlow, Flow, Sink, Source}
-import akka.util.ByteString
-import akka.pattern.ask
+import akka.stream.scaladsl.{BidiFlow, Broadcast, Flow, GraphDSL, Merge, Sink, Source}
 
-//case object Processor {
-//
-//}
-//
-//class Processor[I, R <: Rx[I], O, T <: Tx[O]](rxProps: Props, txProps: Props, protocol: BidiFlow[I, ByteString, O, ByteString, Nothing], connection: Flow[ByteString, ByteString, _]) extends Actor {
-//
-//  val rx = Sink.actorSubscriber[O](rxProps)
-//  val tx = Source.actorPublisher[I](txProps)
-//
-//  protocol >> connection
-////  val flow = tx.via(connection).to(rx)
-////  flow.run()
-//
-//  def receive = {
-//    case x: I =>
-//      tx. ? x
-//  }
-//}
-//
-//
-///*
-//
-//
-//--> Request --> Processor --> Tx (bp) --> TCP --> Rx (bp) --> Processor --> Response
-//
-//
-//
-//
-// */
+import scala.concurrent.{ExecutionContext, Promise}
+
+case class Processor[Cmd, Evt](flow: BidiFlow[Command[Cmd], Cmd, Evt, Event[Evt], Any])
+
+object Processor {
+  def apply[Cmd, Evt](resolver: Resolver[Evt], producerParallism: Int, shouldReact: Boolean = false)(implicit ec: ExecutionContext): Processor[Cmd, Evt] = {
+
+    val consumerStage = new ConsumerStage[Evt, Cmd](resolver)
+    val producerStage = new ProducerStage[Evt, Cmd]()
+
+    val functionApply = Flow[(Evt, ProducerAction[Evt, Cmd])].mapAsync[Command[Cmd]](producerParallism) {
+      case (evt, x: ProducerAction.Signal[Evt, Cmd]) ⇒ x.f(evt).map(x ⇒ SingularCommand[Cmd](x))
+    }
+
+    Processor(BidiFlow.fromGraph[Command[Cmd], Cmd, Evt, Event[Evt], Any] {
+      GraphDSL.create() { implicit b =>
+        import GraphDSL.Implicits._
+
+        val producer = b add producerStage
+        val consumer = b add consumerStage
+
+        val commandIn = b add Flow[Command[Cmd]]
+
+        if (shouldReact) {
+          val fa = b add functionApply
+          val merge = b add Merge[Command[Cmd]](2)
+          commandIn ~> merge.in(0)
+          consumer.out0 ~> fa ~> merge.in(1)
+          merge.out ~> producer
+        } else {
+          consumer.out0 ~> Sink.ignore
+          commandIn ~> producer
+        }
+
+        BidiShape(commandIn.in, producer.out, consumer.in, consumer.out1)
+      }
+    })
+  }
+}

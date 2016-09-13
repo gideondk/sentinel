@@ -5,47 +5,46 @@ import akka.stream.scaladsl.Source
 
 import scala.concurrent.Promise
 
-trait Response[Evt]
+trait Event[A]
 
-case class SingularResponse[Evt](data: Evt) extends Response[Evt]
+case class SingularEvent[A](data: A) extends Event[A]
 
-case class SingularErrorResponse[Evt](data: Evt) extends Response[Evt]
+case class SingularErrorEvent[A](data: A) extends Event[A]
 
-case class StreamResponse[Evt](source: Source[Evt, Any]) extends Response[Evt]
+case class StreamEvent[A](chunks: Source[A, Any]) extends Event[A]
 
-trait Registration[Evt, Resp <: Response[Evt]] {
-  def promise: Promise[Resp]
+trait Registration[A, E <: Event[A]] {
+  def promise: Promise[E]
 }
 
 object Registration {
+  case class SingularResponseRegistration[A](promise: Promise[SingularEvent[A]]) extends Registration[A, SingularEvent[A]]
 
-  case class SingularResponseRegistration[Evt](promise: Promise[SingularResponse[Evt]]) extends Registration[Evt, SingularResponse[Evt]]
-
-  case class StreamReplyRegistration[Evt](promise: Promise[StreamResponse[Evt]]) extends Registration[Evt, StreamResponse[Evt]]
-
+  case class StreamReplyRegistration[A](promise: Promise[StreamEvent[A]]) extends Registration[A, StreamEvent[A]]
 }
 
-trait Command[Cmd, Evt] {
-  def registration: Registration[Evt, _]
-}
+trait Command[Out]
 
-trait ServerCommand[Cmd, Evt]
+case class SingularCommand[Out](payload: Out) extends Command[Out]
+case class StreamingCommand[Out](stream: Source[Out, Any]) extends Command[Out]
+
+trait ServerCommand[Out, In]
 
 trait ServerMetric
-
-trait Reply[Cmd]
 
 object Command {
 
   import Registration._
 
-  case class Ask[Cmd, Evt](payload: Cmd, registration: SingularResponseRegistration[Evt]) extends Command[Cmd, Evt]
+//  case class Ask[Out](payload: Out) extends Command[Out]
 
-  case class Tell[Cmd, Evt](payload: Cmd, registration: SingularResponseRegistration[Evt]) extends Command[Cmd, Evt]
+  object Ask
 
-  case class AskStream[Cmd, Evt](payload: Cmd, registration: StreamReplyRegistration[Evt]) extends Command[Cmd, Evt]
-
-  case class SendStream[Cmd, Evt](stream: Source[Cmd, Any], registration: StreamReplyRegistration[Evt]) extends Command[Cmd, Evt]
+//  case class Tell[Out](payload: Out) extends Command[Out]
+//
+//  case class AskStream[Out](payload: Out) extends Command[Out]
+//
+//  case class SendStream[Out](stream: Source[Out, Any]) extends Command[Out]
 
 }
 
@@ -67,13 +66,13 @@ object ServerMetric {
 
 }
 
-object Reply {
-
-  case class Response[Cmd](payload: Cmd) extends Reply[Cmd]
-
-  case class StreamResponseChunk[Cmd](payload: Cmd) extends Reply[Cmd]
-
-}
+//object Reply {
+//
+//  case class Response[Cmd](payload: Cmd) extends Reply[Cmd]
+//
+//  case class StreamResponseChunk[Cmd](payload: Cmd) extends Reply[Cmd]
+//
+//}
 
 object Management {
 
