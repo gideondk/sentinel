@@ -32,7 +32,7 @@ object ProducerAction {
   }
 
   object ConsumeStream {
-    def apply[E, A <: E, B <: E, C](fun: A ⇒ Enumerator[B] ⇒ Future[C]): ConsumeStream[E, C] = new ConsumeStream[E, C] {
+    def apply[E, A <: E, B <: E, C](fun: A ⇒ Source[B, Any] ⇒ Future[C]): ConsumeStream[E, C] = new ConsumeStream[E, C] {
       val f = fun.asInstanceOf[E ⇒ Source[E, Any] ⇒ Future[C]]
     }
   }

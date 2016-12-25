@@ -1,9 +1,9 @@
 package nl.gideondk.sentinel
 
 import akka.stream.BidiShape
-import akka.stream.scaladsl.{BidiFlow, Broadcast, Flow, GraphDSL, Merge, Sink, Source}
+import akka.stream.scaladsl.{ BidiFlow, Broadcast, Flow, GraphDSL, Merge, Sink, Source }
 
-import scala.concurrent.{ExecutionContext, Promise}
+import scala.concurrent.{ ExecutionContext, Promise }
 
 case class Processor[Cmd, Evt](flow: BidiFlow[Command[Cmd], Cmd, Evt, Event[Evt], Any])
 
@@ -14,11 +14,12 @@ object Processor {
     val producerStage = new ProducerStage[Evt, Cmd]()
 
     val functionApply = Flow[(Evt, ProducerAction[Evt, Cmd])].mapAsync[Command[Cmd]](producerParallism) {
-      case (evt, x: ProducerAction.Signal[Evt, Cmd]) ⇒ x.f(evt).map(x ⇒ SingularCommand[Cmd](x))
+      case (evt, x: ProducerAction.Signal[Evt, Cmd])        ⇒ x.f(evt).map(SingularCommand[Cmd])
+      case (evt, x: ProducerAction.ProduceStream[Evt, Cmd]) ⇒ x.f(evt).map(StreamingCommand[Cmd])
     }
 
     Processor(BidiFlow.fromGraph[Command[Cmd], Cmd, Evt, Event[Evt], Any] {
-      GraphDSL.create() { implicit b =>
+      GraphDSL.create() { implicit b ⇒
         import GraphDSL.Implicits._
 
         val producer = b add producerStage

@@ -1,14 +1,14 @@
 package nl.gideondk.sentinel
 
 import akka.stream._
-import akka.stream.scaladsl.{BidiFlow, Broadcast, Flow, GraphDSL, Merge, Source}
+import akka.stream.scaladsl.{ BidiFlow, Broadcast, Flow, GraphDSL, Merge, Source }
 import akka.stream.stage.GraphStageLogic.EagerTerminateOutput
-import akka.stream.stage.{GraphStage, GraphStageLogic, InHandler, OutHandler}
+import akka.stream.stage.{ GraphStage, GraphStageLogic, InHandler, OutHandler }
 
 import nl.gideondk.sentinel.ConsumerAction._
 import nl.gideondk.sentinel.Registration.SingularResponseRegistration
 
-import scala.concurrent.{ExecutionContext, Future, Promise}
+import scala.concurrent.{ ExecutionContext, Future, Promise }
 
 class ConsumerStage[Evt, Cmd](resolver: Resolver[Evt]) extends GraphStage[FanOutShape2[Evt, (Evt, ProducerAction[Evt, Cmd]), Event[Evt]]] {
 
@@ -89,27 +89,33 @@ class ConsumerStage[Evt, Cmd](resolver: Resolver[Evt]) extends GraphStage[FanOut
 
       initialChunk match {
         case Some(x) ⇒ push(signalOut, StreamEvent(Source.single(x) ++ Source.fromGraph(chunkSource.source)))
-        case None ⇒ push(signalOut, StreamEvent(Source.fromGraph(chunkSource.source)))
+        case None    ⇒ push(signalOut, StreamEvent(Source.fromGraph(chunkSource.source)))
       }
+    }
+
+    def consumeStream(initialChunk: Evt): Unit = {
+      //      emit(actionOut, (initialChunk, ProducerAction.ConsumeStream(Source.fromGraph(chunkSource.source))))
     }
 
     def onPush(): Unit = {
       val evt = grab(eventIn)
 
       resolver.process(evt) match {
-        case x: ProducerAction[Evt, Cmd] ⇒ emit(actionOut, (evt, x))
+        case x: ProducerAction.Signal[Evt, Cmd] ⇒ emit(actionOut, (evt, x))
 
-        case AcceptSignal ⇒ push(signalOut, SingularEvent(evt))
+        //        case x: ProducerAction.ProduceStream[Evt, Cmd] ⇒ emit(actionOut, (evt, x))
 
-        case AcceptError ⇒ push(signalOut, SingularErrorEvent(evt))
+        case AcceptSignal                       ⇒ push(signalOut, SingularEvent(evt))
 
-        case StartStream ⇒ startStream(None)
+        case AcceptError                        ⇒ push(signalOut, SingularErrorEvent(evt))
 
-        case ConsumeStreamChunk ⇒ startStream(Some(evt))
+        case StartStream                        ⇒ startStream(None)
 
-        case ConsumeChunkAndEndStream ⇒ push(signalOut, StreamEvent(Source.single(evt)))
+        case ConsumeStreamChunk                 ⇒ startStream(Some(evt))
 
-        case Ignore ⇒ ()
+        case ConsumeChunkAndEndStream           ⇒ push(signalOut, StreamEvent(Source.single(evt)))
+
+        case Ignore                             ⇒ ()
       }
     }
 

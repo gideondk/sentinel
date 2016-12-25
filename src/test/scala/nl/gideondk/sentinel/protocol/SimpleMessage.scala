@@ -1,7 +1,7 @@
 package nl.gideondk.sentinel.protocol
 
-import akka.stream.scaladsl.{BidiFlow, Framing}
-import akka.util.{ByteString, ByteStringBuilder}
+import akka.stream.scaladsl.{ BidiFlow, Framing }
+import akka.util.{ ByteString, ByteStringBuilder }
 import nl.gideondk.sentinel._
 
 import scala.concurrent.Future
@@ -21,7 +21,6 @@ case class SimpleStreamChunk(payload: String) extends SimpleMessageFormat
 
 // 3
 case class SimpleError(payload: String) extends SimpleMessageFormat
-
 
 object SimpleMessage {
   val PING_PONG = 1
@@ -76,20 +75,18 @@ import SimpleMessage._
 
 object SimpleHandler extends Resolver[SimpleMessageFormat] {
   def process: PartialFunction[SimpleMessageFormat, Action] = {
-    case SimpleStreamChunk(x) ⇒ if (x.length > 0) ConsumerAction.ConsumeStreamChunk else ConsumerAction.EndStream
-    case x: SimpleError ⇒ ConsumerAction.AcceptError
-    case x: SimpleReply ⇒ ConsumerAction.AcceptSignal
+    case SimpleStreamChunk(x)              ⇒ if (x.length > 0) ConsumerAction.ConsumeStreamChunk else ConsumerAction.EndStream
+    case x: SimpleError                    ⇒ ConsumerAction.AcceptError
+    case x: SimpleReply                    ⇒ ConsumerAction.AcceptSignal
     case SimpleCommand(PING_PONG, payload) ⇒ ProducerAction.Signal { x: SimpleCommand ⇒ Future(SimpleReply("PONG")) }
-    case x => println("Unhandled: " + x); ConsumerAction.Ignore
+    case x                                 ⇒ println("Unhandled: " + x); ConsumerAction.Ignore
   }
 }
-
 
 object SimpleServerHandler extends Resolver[SimpleMessageFormat] {
   def process: PartialFunction[SimpleMessageFormat, Action] = {
     case SimpleCommand(PING_PONG, payload) ⇒ ProducerAction.Signal { x: SimpleCommand ⇒ Future(SimpleReply("PONG")) }
-    case x => println("Unhandled: " + x); ConsumerAction.Ignore
-
+    case x                                 ⇒ println("Unhandled: " + x); ConsumerAction.Ignore
 
     //    case SimpleCommand(TOTAL_CHUNK_SIZE, payload) ⇒ ProducerAction.ConsumeStream { x: SimpleCommand ⇒
     //      s: Enumerator[SimpleStreamChunk] ⇒

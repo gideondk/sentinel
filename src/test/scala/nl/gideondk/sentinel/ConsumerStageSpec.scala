@@ -2,9 +2,9 @@ package nl.gideondk.sentinel
 
 import akka.actor.ActorSystem
 import akka.event.Logging
-import akka.stream.{ActorMaterializer, Attributes, ClosedShape}
-import akka.stream.scaladsl.{Broadcast, Flow, GraphDSL, Merge, RunnableGraph, Sink, Source}
-import akka.stream.testkit.{TestPublisher, TestSubscriber}
+import akka.stream.{ ActorMaterializer, Attributes, ClosedShape }
+import akka.stream.scaladsl.{ Broadcast, Flow, GraphDSL, Merge, RunnableGraph, Sink, Source }
+import akka.stream.testkit.{ TestPublisher, TestSubscriber }
 import nl.gideondk.sentinel.protocol._
 import org.scalatest._
 import protocol.SimpleMessage._
@@ -12,37 +12,28 @@ import protocol.SimpleMessage._
 import scala.concurrent._
 import duration._
 
-object ConsumerStageSpec {
-
-  val eventFlow = Flow[Event[SimpleMessageFormat]].flatMapConcat {
-    case x: StreamEvent[SimpleMessageFormat] => x.chunks
-    case x: SingularEvent[SimpleMessageFormat] => Source.single(x.data)
-  }
-
-  def stage() = new ConsumerStage[SimpleMessageFormat, SimpleMessageFormat](SimpleHandler)
-
-  val headSink = Sink.head[Event[SimpleMessageFormat]]
-  val seqSink = Sink.seq[SimpleMessageFormat]
-  val ignoreSink = Sink.ignore
-}
-
 class ConsumerStageSpec extends AkkaSpec {
 
-  import ConsumerStageSpec._
+  val eventFlow = Flow[Event[SimpleMessageFormat]].flatMapConcat {
+    case x: StreamEvent[SimpleMessageFormat]   ⇒ x.chunks
+    case x: SingularEvent[SimpleMessageFormat] ⇒ Source.single(x.data)
+  }
+
+  val stage = new ConsumerStage[SimpleMessageFormat, SimpleMessageFormat](SimpleHandler)
 
   "The ConsumerStage" should {
     "handle incoming events" in {
       implicit val materializer = ActorMaterializer()
 
-      val g = RunnableGraph.fromGraph(GraphDSL.create(headSink) { implicit b ⇒
+      val g = RunnableGraph.fromGraph(GraphDSL.create(Sink.head[Event[SimpleMessageFormat]]) { implicit b ⇒
         sink ⇒
           import GraphDSL.Implicits._
 
-          val s = b.add(stage())
+          val s = b add stage
 
           Source.single(SimpleReply("")) ~> s.in
           s.out1 ~> sink.in
-          s.out0 ~> ignoreSink
+          s.out0 ~> Sink.ignore
 
           ClosedShape
       })
@@ -57,12 +48,11 @@ class ConsumerStageSpec extends AkkaSpec {
         sink ⇒
           import GraphDSL.Implicits._
 
-          val s = b.add(stage())
-
+          val s = b add stage
 
           Source(List(SimpleReply("A"), SimpleReply("B"), SimpleReply("C"))) ~> s.in
           s.out1 ~> sink.in
-          s.out0 ~> ignoreSink
+          s.out0 ~> Sink.ignore
 
           ClosedShape
       })
@@ -80,11 +70,11 @@ class ConsumerStageSpec extends AkkaSpec {
         sink ⇒
           import GraphDSL.Implicits._
 
-          val s = b.add(stage())
+          val s = b add stage
 
           Source.fromPublisher(inProbe) ~> s.in
           s.out1 ~> sink.in
-          s.out0 ~> ignoreSink
+          s.out0 ~> Sink.ignore
 
           ClosedShape
       })
@@ -115,8 +105,8 @@ class ConsumerStageSpec extends AkkaSpec {
       // Request the initial element from the sub-source
       entitySub.request(1)
 
-//            // Pull is coming from merged stream for initial element
-//            inSub.expectRequest(1)
+      //            // Pull is coming from merged stream for initial element
+      //            inSub.expectRequest(1)
 
       // Expect initial element to be available
       entityProbe.expectNext()
@@ -148,15 +138,15 @@ class ConsumerStageSpec extends AkkaSpec {
 
       val chunkSource = Source(List(SimpleStreamChunk("A"), SimpleStreamChunk("B"), SimpleStreamChunk("C"), SimpleStreamChunk("")))
 
-      val g = RunnableGraph.fromGraph(GraphDSL.create(seqSink) { implicit b ⇒
+      val g = RunnableGraph.fromGraph(GraphDSL.create(Sink.seq[SimpleMessageFormat]) { implicit b ⇒
         sink ⇒
           import GraphDSL.Implicits._
 
-          val s = b.add(stage())
+          val s = b add stage
 
           chunkSource ~> s.in
           s.out1 ~> eventFlow ~> sink.in
-          s.out0 ~> ignoreSink
+          s.out0 ~> Sink.ignore
 
           ClosedShape
       })
@@ -170,15 +160,15 @@ class ConsumerStageSpec extends AkkaSpec {
       val items = List.fill(10)(List(SimpleStreamChunk("A"), SimpleStreamChunk("B"), SimpleStreamChunk("C"), SimpleStreamChunk(""))).flatten
       val chunkSource = Source(items)
 
-      val g = RunnableGraph.fromGraph(GraphDSL.create(seqSink) { implicit b ⇒
+      val g = RunnableGraph.fromGraph(GraphDSL.create(Sink.seq[SimpleMessageFormat]) { implicit b ⇒
         sink ⇒
           import GraphDSL.Implicits._
 
-          val s = b.add(stage())
+          val s = b add stage
 
           chunkSource ~> s.in
           s.out1 ~> eventFlow ~> sink.in
-          s.out0 ~> ignoreSink
+          s.out0 ~> Sink.ignore
 
           ClosedShape
       })
@@ -195,15 +185,15 @@ class ConsumerStageSpec extends AkkaSpec {
 
       val chunkSource = Source(a ++ b ++ c)
 
-      val g = RunnableGraph.fromGraph(GraphDSL.create(seqSink) { implicit b ⇒
+      val g = RunnableGraph.fromGraph(GraphDSL.create(Sink.seq[SimpleMessageFormat]) { implicit b ⇒
         sink ⇒
           import GraphDSL.Implicits._
 
-          val s = b.add(stage())
+          val s = b add stage
 
           chunkSource ~> s.in
-          s.out1 ~> ConsumerStageSpec.eventFlow ~> sink.in
-          s.out0 ~> ignoreSink
+          s.out1 ~> eventFlow ~> sink.in
+          s.out0 ~> Sink.ignore
 
           ClosedShape
       })
@@ -220,10 +210,10 @@ class ConsumerStageSpec extends AkkaSpec {
         sink ⇒
           import GraphDSL.Implicits._
 
-          val s = b.add(stage())
+          val s = b add stage
 
           Source(a) ~> s.in
-          s.out1 ~> ignoreSink
+          s.out1 ~> Sink.ignore
           s.out0 ~> sink.in
 
           ClosedShape

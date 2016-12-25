@@ -5,7 +5,7 @@ import akka.stream._
 import akka.stream.scaladsl._
 
 import nl.gideondk.sentinel.Registration.SingularResponseRegistration
-import nl.gideondk.sentinel.protocol.{SimpleMessageFormat, SimpleReply}
+import nl.gideondk.sentinel.protocol.{ SimpleMessageFormat, SimpleReply }
 
 import scala.concurrent._
 import scala.concurrent.duration._

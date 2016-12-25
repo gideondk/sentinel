@@ -1,25 +1,25 @@
 package nl.gideondk.sentinel
 
 import akka.stream._
-import akka.stream.scaladsl.{BidiFlow, Flow, GraphDSL, Source}
+import akka.stream.scaladsl.{ BidiFlow, Flow, GraphDSL, Source }
 import akka.stream.stage.GraphStageLogic._
-import akka.stream.stage.{GraphStage, GraphStageLogic, InHandler, OutHandler}
+import akka.stream.stage.{ GraphStage, GraphStageLogic, InHandler, OutHandler }
 import nl.gideondk.sentinel.ConsumerAction._
 
 class ProducerStage[In, Out] extends GraphStage[FlowShape[Command[Out], Out]] {
   private val in = Inlet[Command[Out]]("ProducerStage.Command.In")
   private val out = Outlet[Out]("ProducerStage.Command.Out")
 
-  var streaming = false
-  var closeAfterCompletion = false
-
   val shape = new FlowShape(in, out)
 
   override def createLogic(effectiveAttributes: Attributes) = new GraphStageLogic(shape) {
+    var streaming = false
+    var closeAfterCompletion = false
+
     val defaultInHandler = new InHandler {
       override def onPush(): Unit = grab(in) match {
-        case x: SingularCommand[Out] ⇒ push(out, x.payload)
-        case x: StreamingCommand[Out] => stream(x.stream)
+        case x: SingularCommand[Out]  ⇒ push(out, x.payload)
+        case x: StreamingCommand[Out] ⇒ stream(x.stream)
       }
 
       override def onUpstreamFinish(): Unit = {
@@ -44,8 +44,7 @@ class ProducerStage[In, Out] extends GraphStage[FlowShape[Command[Out], Out]] {
         override def onUpstreamFinish(): Unit = {
           if (closeAfterCompletion) {
             completeStage()
-          }
-          else {
+          } else {
             streaming = false
             setHandler(out, waitForDemandHandler)
             if (isAvailable(out)) pull(in)

@@ -1,25 +1,19 @@
 package nl.gideondk.sentinel
 
 import akka.event.Logging
-import akka.stream.{ActorMaterializer, Attributes, ClosedShape}
-import akka.stream.scaladsl.{Flow, GraphDSL, RunnableGraph, Sink, Source}
-import akka.stream.testkit.{TestPublisher, TestSubscriber}
+import akka.stream.{ ActorMaterializer, Attributes, ClosedShape }
+import akka.stream.scaladsl.{ Flow, GraphDSL, RunnableGraph, Sink, Source }
+import akka.stream.testkit.{ TestPublisher, TestSubscriber }
 import nl.gideondk.sentinel.Command.Ask
 import nl.gideondk.sentinel.Registration.SingularResponseRegistration
 import nl.gideondk.sentinel.protocol._
 
-import scala.concurrent.{Await, Promise}
+import scala.concurrent.{ Await, Promise }
 import scala.concurrent.duration._
-
-object ProcessorSpec {
-
-}
 
 class ProcessorSpec extends AkkaSpec {
   val processor = Processor[SimpleMessageFormat, SimpleMessageFormat](SimpleHandler, 1)
   val serverProcessor = Processor[SimpleMessageFormat, SimpleMessageFormat](SimpleServerHandler, 1, true)
-
-  import ProcessorSpec._
 
   "The AntennaStage" should {
     "correctly flow in a client, server situation" in {
@@ -33,8 +27,8 @@ class ProcessorSpec extends AkkaSpec {
 
       val source = Source[SingularCommand[SimpleMessageFormat]](List(pingCommand, zeroCommand, pingCommand, zeroCommand))
 
-      val flow = RunnableGraph.fromGraph(GraphDSL.create(Sink.seq[Event[SimpleMessageFormat]]) { implicit b =>
-        sink =>
+      val flow = RunnableGraph.fromGraph(GraphDSL.create(Sink.seq[Event[SimpleMessageFormat]]) { implicit b ⇒
+        sink ⇒
           import GraphDSL.Implicits._
 
           val client = b.add(processor.flow)
