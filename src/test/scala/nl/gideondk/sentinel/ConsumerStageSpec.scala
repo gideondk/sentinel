@@ -1,8 +1,9 @@
 package nl.gideondk.sentinel
 
-import akka.stream.scaladsl.{Flow, GraphDSL, RunnableGraph, Sink, Source}
-import akka.stream.testkit.{TestPublisher, TestSubscriber}
-import akka.stream.{ActorMaterializer, Attributes, ClosedShape}
+import akka.actor.ActorSystem
+import akka.stream.scaladsl.{ Flow, GraphDSL, RunnableGraph, Sink, Source }
+import akka.stream.testkit.{ TestPublisher, TestSubscriber }
+import akka.stream.{ ActorMaterializer, Attributes, ClosedShape }
 import nl.gideondk.sentinel.pipeline.ConsumerStage
 import nl.gideondk.sentinel.protocol.SimpleMessage._
 import nl.gideondk.sentinel.protocol._
@@ -10,10 +11,10 @@ import nl.gideondk.sentinel.protocol._
 import scala.concurrent._
 import scala.concurrent.duration._
 
-class ConsumerStageSpec extends AkkaSpec {
+class ConsumerStageSpec extends SentinelSpec(ActorSystem()) {
 
   val eventFlow = Flow[Event[SimpleMessageFormat]].flatMapConcat {
-    case x: StreamEvent[SimpleMessageFormat] ⇒ x.chunks
+    case x: StreamEvent[SimpleMessageFormat]   ⇒ x.chunks
     case x: SingularEvent[SimpleMessageFormat] ⇒ Source.single(x.data)
   }
 
@@ -36,7 +37,9 @@ class ConsumerStageSpec extends AkkaSpec {
           ClosedShape
       })
 
-      Await.result(g.run(), 300.millis) should be(SingularEvent(SimpleReply("")))
+      whenReady(g.run()) { result ⇒
+        result should equal(SingularEvent(SimpleReply("")))
+      }
     }
 
     "handle multiple incoming events" in {
@@ -55,7 +58,9 @@ class ConsumerStageSpec extends AkkaSpec {
           ClosedShape
       })
 
-      Await.result(g.run(), 300.millis) should be(Vector(SingularEvent(SimpleReply("A")), SingularEvent(SimpleReply("B")), SingularEvent(SimpleReply("C"))))
+      whenReady(g.run()) { result ⇒
+        result should equal(Seq(SingularEvent(SimpleReply("A")), SingularEvent(SimpleReply("B")), SingularEvent(SimpleReply("C"))))
+      }
     }
 
     "not lose demand that comes in while handling incoming streams" in {
@@ -149,7 +154,9 @@ class ConsumerStageSpec extends AkkaSpec {
           ClosedShape
       })
 
-      Await.result(g.run(), 300.millis) should be(Seq(SimpleStreamChunk("A"), SimpleStreamChunk("B"), SimpleStreamChunk("C")))
+      whenReady(g.run()) { result ⇒
+        result should equal(Seq(SimpleStreamChunk("A"), SimpleStreamChunk("B"), SimpleStreamChunk("C")))
+      }
     }
 
     "correctly output multiple stream responses" in {
@@ -171,7 +178,9 @@ class ConsumerStageSpec extends AkkaSpec {
           ClosedShape
       })
 
-      Await.result(g.run(), 300.millis) should be(items.filter(_.payload.length > 0))
+      whenReady(g.run()) { result ⇒
+        result should equal(items.filter(_.payload.length > 0))
+      }
     }
 
     "correctly handle asymmetrical message types" in {
@@ -196,13 +205,15 @@ class ConsumerStageSpec extends AkkaSpec {
           ClosedShape
       })
 
-      Await.result(g.run(), 300.millis) should be(a ++ b.filter(_.payload.length > 0) ++ c)
+      whenReady(g.run()) { result ⇒
+        result should equal(a ++ b.filter(_.payload.length > 0) ++ c)
+      }
     }
 
     "correctly output signals on event-out pipe" in {
       implicit val materializer = ActorMaterializer()
 
-      val a = List(SimpleCommand(PING_PONG, ""), SimpleCommand(PING_PONG, ""), SimpleCommand(PING_PONG, ""))
+      val items = List(SimpleCommand(PING_PONG, ""), SimpleCommand(PING_PONG, ""), SimpleCommand(PING_PONG, ""))
 
       val g = RunnableGraph.fromGraph(GraphDSL.create(Sink.seq[(SimpleMessageFormat, ProducerAction[SimpleMessageFormat, SimpleMessageFormat])]) { implicit b ⇒
         sink ⇒
@@ -210,14 +221,16 @@ class ConsumerStageSpec extends AkkaSpec {
 
           val s = b add stage
 
-          Source(a) ~> s.in
+          Source(items) ~> s.in
           s.out1 ~> Sink.ignore
           s.out0 ~> sink.in
 
           ClosedShape
       })
 
-      Await.result(g.run(), 300.millis).map(_._1) should be(a)
+      whenReady(g.run()) { result ⇒
+        result.map(_._1) should equal(items)
+      }
     }
   }
 }

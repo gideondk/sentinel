@@ -1,14 +1,15 @@
 package nl.gideondk.sentinel
 
-import akka.stream.scaladsl.{GraphDSL, RunnableGraph, Sink, Source}
-import akka.stream.{ActorMaterializer, ClosedShape}
+import akka.actor.ActorSystem
+import akka.stream.scaladsl.{ GraphDSL, RunnableGraph, Sink, Source }
+import akka.stream.{ ActorMaterializer, ClosedShape }
 import nl.gideondk.sentinel.pipeline.Processor
 import nl.gideondk.sentinel.protocol._
 
 import scala.concurrent.Await
 import scala.concurrent.duration._
 
-class ProcessorSpec extends AkkaSpec {
+class ProcessorSpec extends SentinelSpec(ActorSystem()) {
   val processor = Processor[SimpleMessageFormat, SimpleMessageFormat](SimpleHandler, 1)
   val serverProcessor = Processor[SimpleMessageFormat, SimpleMessageFormat](SimpleServerHandler, 1, true)
 
@@ -43,7 +44,9 @@ class ProcessorSpec extends AkkaSpec {
           ClosedShape
       })
 
-      Await.result(flow.run(), 5 seconds) shouldBe Vector(SingularEvent(SimpleReply("PONG")), SingularEvent(SimpleReply("PONG")))
+      whenReady(flow.run()) { result ⇒
+        result should equal(Seq(SingularEvent(SimpleReply("PONG")), SingularEvent(SimpleReply("PONG"))))
+      }
     }
   }
 }

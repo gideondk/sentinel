@@ -1,18 +1,19 @@
 package nl.gideondk.sentinel
 
+import akka.actor.ActorSystem
 import akka.stream.ActorMaterializer
 import akka.stream.scaladsl._
 import nl.gideondk.sentinel.pipeline.ProducerStage
-import nl.gideondk.sentinel.protocol.{SimpleMessageFormat, SimpleReply, SingularCommand, StreamingCommand}
+import nl.gideondk.sentinel.protocol.{ SimpleMessageFormat, SimpleReply, SingularCommand, StreamingCommand }
 
 import scala.concurrent._
 import scala.concurrent.duration._
 
 object ProducerStageSpec {
-  def stage() = new ProducerStage[SimpleMessageFormat, SimpleMessageFormat]()
+  val stage = new ProducerStage[SimpleMessageFormat, SimpleMessageFormat]()
 }
 
-class ProducerStageSpec extends AkkaSpec {
+class ProducerStageSpec extends SentinelSpec(ActorSystem()) {
 
   import ProducerStageSpec._
 
@@ -21,25 +22,31 @@ class ProducerStageSpec extends AkkaSpec {
       implicit val materializer = ActorMaterializer()
 
       val command = SingularCommand[SimpleMessageFormat](SimpleReply("A"))
-      val result = Await.result(Source(List(command)).via(stage()).runWith(Sink.seq), 5 seconds)
+      val singularResult = Source(List(command)).via(stage).runWith(Sink.seq)
 
-      result shouldBe Vector(SimpleReply("A"))
+      Await.result(singularResult, 5 seconds) should equal(Seq(SimpleReply("A")))
 
-      val multiResult = Await.result(Source(List(command, command, command)).via(stage()).runWith(Sink.seq), 5 seconds)
-      multiResult shouldBe Vector(SimpleReply("A"), SimpleReply("A"), SimpleReply("A"))
+      //      val multiResult = Source(List(command, command, command)).via(stage).runWith(Sink.seq)
+      //      whenReady(multiResult) { result ⇒
+      //        result should equal(Seq(SimpleReply("A"), SimpleReply("A"), SimpleReply("A")))
+      //      }
     }
 
-    "handle outgoing streams" in {
-      implicit val materializer = ActorMaterializer()
-
-      val items = List(SimpleReply("A"), SimpleReply("B"), SimpleReply("C"), SimpleReply("D"))
-      val command = StreamingCommand[SimpleMessageFormat](Source(items))
-
-      val result = Await.result(Source(List(command)).via(stage()).runWith(Sink.seq), 5 seconds)
-      result shouldBe items
-
-      val multiResult = Await.result(Source(List(command, command, command)).via(stage()).runWith(Sink.seq), 5 seconds)
-      multiResult shouldBe (items ++ items ++ items)
-    }
+    //    "handle outgoing streams" in {
+    //      implicit val materializer = ActorMaterializer()
+    //
+    //      val items = List(SimpleReply("A"), SimpleReply("B"), SimpleReply("C"), SimpleReply("D"))
+    //      val command = StreamingCommand[SimpleMessageFormat](Source(items))
+    //
+    //      val singularResult = Source(List(command)).via(stage).runWith(Sink.seq)
+    //      whenReady(singularResult) { result ⇒
+    //        result should equal(items)
+    //      }
+    //
+    //      val multiResult = Source(List(command)).via(stage).runWith(Sink.seq)
+    //      whenReady(multiResult) { result ⇒
+    //        result should equal(items ++ items ++ items)
+    //      }
+    //    }
   }
 }

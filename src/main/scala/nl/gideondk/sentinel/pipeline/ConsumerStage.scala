@@ -7,11 +7,11 @@ import nl.gideondk.sentinel.protocol.ConsumerAction._
 import nl.gideondk.sentinel.protocol._
 
 class ConsumerStage[Evt, Cmd](resolver: Resolver[Evt]) extends GraphStage[FanOutShape2[Evt, (Evt, ProducerAction[Evt, Cmd]), Event[Evt]]] {
-
-  val shape = new FanOutShape2(eventIn, actionOut, signalOut)
   private val eventIn = Inlet[Evt]("ConsumerStage.Event.In")
   private val actionOut = Outlet[(Evt, ProducerAction[Evt, Cmd])]("ConsumerStage.Action.Out")
   private val signalOut = Outlet[Event[Evt]]("ConsumerStage.Signal.Out")
+
+  val shape = new FanOutShape2(eventIn, actionOut, signalOut)
 
   override def createLogic(effectiveAttributes: Attributes) = new GraphStageLogic(shape) with InHandler with OutHandler {
     private var chunkSource: SubSourceOutlet[Evt] = _
