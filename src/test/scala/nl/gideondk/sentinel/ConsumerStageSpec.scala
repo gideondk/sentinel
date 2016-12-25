@@ -5,6 +5,7 @@ import akka.event.Logging
 import akka.stream.{ ActorMaterializer, Attributes, ClosedShape }
 import akka.stream.scaladsl.{ Broadcast, Flow, GraphDSL, Merge, RunnableGraph, Sink, Source }
 import akka.stream.testkit.{ TestPublisher, TestSubscriber }
+import nl.gideondk.sentinel.pipeline.ConsumerStage
 import nl.gideondk.sentinel.protocol._
 import org.scalatest._
 import protocol.SimpleMessage._

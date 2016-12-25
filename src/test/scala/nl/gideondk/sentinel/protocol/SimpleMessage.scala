@@ -3,6 +3,7 @@ package nl.gideondk.sentinel.protocol
 import akka.stream.scaladsl.{ BidiFlow, Framing }
 import akka.util.{ ByteString, ByteStringBuilder }
 import nl.gideondk.sentinel._
+import nl.gideondk.sentinel.pipeline.Resolver
 
 import scala.concurrent.Future
 import scala.concurrent.ExecutionContext.Implicits.global

@@ -6,7 +6,9 @@ import akka.stream.scaladsl.{ BidiFlow, GraphDSL, RunnableGraph, Sink, Source, T
 import akka.stream.stage._
 import akka.util.ByteString
 import akka.{ Done, NotUsed, stream }
-import nl.gideondk.sentinel.{ Command, Event, Processor }
+import nl.gideondk.sentinel.pipeline.Processor
+
+import nl.gideondk.sentinel.protocol.{ Command, Event }
 
 import scala.collection.mutable
 import scala.concurrent._
@@ -37,9 +39,7 @@ object ClientStage {
 
 import nl.gideondk.sentinel.client.ClientStage._
 
-class ClientStage[Cmd, Evt](connectionsPerHost: Int, maximumFailuresPerHost: Int, recoveryPeriod: FiniteDuration, processor: Processor[Cmd, Evt], protocol: BidiFlow[ByteString, Evt, Cmd, ByteString, Any])(implicit system: ActorSystem, mat: ActorMaterializer) extends GraphStage[FanInShape2[ConnectionEvent, (Command[Cmd], Promise[Event[Evt]]), (Try[Event[Evt]], Promise[Event[Evt]])]] {
-
-  type Context = Promise[Event[Evt]]
+class ClientStage[Context, Cmd, Evt](connectionsPerHost: Int, maximumFailuresPerHost: Int, recoveryPeriod: FiniteDuration, processor: Processor[Cmd, Evt], protocol: BidiFlow[ByteString, Evt, Cmd, ByteString, Any])(implicit system: ActorSystem, mat: ActorMaterializer) extends GraphStage[FanInShape2[ConnectionEvent, (Command[Cmd], Context), (Try[Event[Evt]], Context)]] {
 
   val connectionEventIn = Inlet[ConnectionEvent]("ClientStage.ConnectionEvent.In")
   val commandIn = Inlet[(Command[Cmd], Context)]("ClientStage.Command.In")
@@ -193,13 +193,13 @@ class ClientStage[Cmd, Evt](connectionsPerHost: Int, maximumFailuresPerHost: Int
       connection ⇒
       private val connectionEventIn = new SubSinkInlet[Event[Evt]](s"Connection.[$host].[$connectionId].in")
       private val connectionCommandOut = new SubSourceOutlet[Command[Cmd]](s"Connection.[$host].[$connectionId].out")
-      private val contexts = mutable.Queue.empty[Promise[Event[Evt]]]
+      private val contexts = mutable.Queue.empty[Context]
 
       def canBePushedForCommand = connectionCommandOut.isAvailable
 
       def canBePulledForEvent = connectionEventIn.isAvailable
 
-      def pushCommand(command: Command[Cmd], context: Promise[Event[Evt]]) = {
+      def pushCommand(command: Command[Cmd], context: Context) = {
         contexts.enqueue(context)
         connectionCommandOut.push(command)
       }

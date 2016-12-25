@@ -4,8 +4,9 @@ import akka.event.Logging
 import akka.stream.{ ActorMaterializer, Attributes, ClosedShape }
 import akka.stream.scaladsl.{ Flow, GraphDSL, RunnableGraph, Sink, Source }
 import akka.stream.testkit.{ TestPublisher, TestSubscriber }
-import nl.gideondk.sentinel.Command.Ask
-import nl.gideondk.sentinel.Registration.SingularResponseRegistration
+import nl.gideondk.sentinel.protocol.Command.Ask
+import nl.gideondk.sentinel.protocol.Registration.SingularResponseRegistration
+import nl.gideondk.sentinel.pipeline.Processor
 import nl.gideondk.sentinel.protocol._
 
 import scala.concurrent.{ Await, Promise }
