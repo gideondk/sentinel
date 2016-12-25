@@ -8,7 +8,7 @@ object ApplicationBuild extends Build {
       name := "sentinel",
       version := "0.8-SNAPSHOT",
       organization := "nl.gideondk",
-      scalaVersion := "2.12.0",
+      scalaVersion := "2.11.8",
       parallelExecution in Test := false,
       resolvers ++= Seq(Resolver.mavenLocal,
         "gideondk-repo" at "https://raw.github.com/gideondk/gideondk-mvn-repo/master",
@@ -22,7 +22,7 @@ object ApplicationBuild extends Build {
       publishTo := Some(Resolver.file("file", new File("/Users/gideondk/Development/gideondk-mvn-repo")))
     )
 
-  val akkaVersion = "2.4.14"
+  val akkaVersion = "2.4.11"
 
   val appDependencies = Seq(
     "org.scalatest" %% "scalatest" % "3.0.0" % "test",

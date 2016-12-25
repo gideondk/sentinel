@@ -7,6 +7,7 @@ import akka.stream.scaladsl.{ Broadcast, Flow, GraphDSL, Merge, RunnableGraph, S
 import akka.stream.testkit.{ TestPublisher, TestSubscriber }
 import akka.util.ByteString
 import nl.gideondk.sentinel.client.{ ClientStage, Host }
+import nl.gideondk.sentinel.pipeline.Processor
 import nl.gideondk.sentinel.protocol._
 import org.scalatest._
 import protocol.SimpleMessage._
@@ -43,9 +44,11 @@ class ClientStageSpec extends AkkaSpec {
   import ClientStageSpec._
 
   "The ClientStage" should {
-    "Keep message order intact" in {
+    "keep message order intact" in {
       val server = mockServer(system, 9000)
       implicit val materializer = ActorMaterializer()
+
+      type Context = Promise[Event[SimpleMessageFormat]]
 
       val numberOfMessages = 1024
 
@@ -56,7 +59,7 @@ class ClientStageSpec extends AkkaSpec {
         source ⇒
           import GraphDSL.Implicits._
 
-          val s = b.add(new ClientStage[SimpleMessageFormat, SimpleMessageFormat](32, 8, 2 seconds, Processor(SimpleHandler, 1, false), SimpleMessage.protocol.reversed))
+          val s = b.add(new ClientStage[Context, SimpleMessageFormat, SimpleMessageFormat](32, 8, 2 seconds, Processor(SimpleHandler, 1, false), SimpleMessage.protocol.reversed))
 
           Source.single(ClientStage.LinkUp(Host("localhost", 9000))) ~> s.in0
           source.out ~> s.in1

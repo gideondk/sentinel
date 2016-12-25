@@ -41,24 +41,31 @@ object Client {
 
   case class InputQueueUnavailable() extends Exception with ClientException
 
-  def apply[Cmd, Evt](hosts: Source[ConnectionEvent, NotUsed], resolver: Resolver[Evt], inputOverflowStrategy: OverflowStrategy, shouldReact: Boolean = false, protocol: BidiFlow[Cmd, ByteString, ByteString, Evt, Any])(implicit system: ActorSystem, mat: ActorMaterializer, ec: ExecutionContext) = {
+  def apply[Cmd, Evt](hosts: Source[ConnectionEvent, NotUsed], resolver: Resolver[Evt],
+                      shouldReact: Boolean, inputOverflowStrategy: OverflowStrategy,
+                      protocol: BidiFlow[Cmd, ByteString, ByteString, Evt, Any])(implicit system: ActorSystem, mat: ActorMaterializer, ec: ExecutionContext): Client[Cmd, Evt] = {
     val processor = Processor[Cmd, Evt](resolver, Config.producerParallelism)
     new Client(hosts, ClientConfig.connectionsPerHost, ClientConfig.maxFailuresPerHost, ClientConfig.failureRecoveryPeriod, ClientConfig.inputBufferSize, inputOverflowStrategy, processor, protocol.reversed)
   }
 
-  def apply[Cmd, Evt](hosts: List[Host], resolver: Resolver[Evt], inputOverflowStrategy: OverflowStrategy, shouldReact: Boolean = false, protocol: BidiFlow[Cmd, ByteString, ByteString, Evt, Any])(implicit system: ActorSystem, mat: ActorMaterializer, ec: ExecutionContext) = {
+  def apply[Cmd, Evt](hosts: List[Host], resolver: Resolver[Evt],
+                      shouldReact: Boolean, inputOverflowStrategy: OverflowStrategy,
+                      protocol: BidiFlow[Cmd, ByteString, ByteString, Evt, Any])(implicit system: ActorSystem, mat: ActorMaterializer, ec: ExecutionContext): Client[Cmd, Evt] = {
     val processor = Processor[Cmd, Evt](resolver, Config.producerParallelism)
     new Client(Source(hosts.map(LinkUp)), ClientConfig.connectionsPerHost, ClientConfig.maxFailuresPerHost, ClientConfig.failureRecoveryPeriod, ClientConfig.inputBufferSize, inputOverflowStrategy, processor, protocol.reversed)
   }
 
-  def flow[Cmd, Evt](hosts: Source[ConnectionEvent, NotUsed], resolver: Resolver[Evt], inputOverflowStrategy: OverflowStrategy, shouldReact: Boolean = false, protocol: BidiFlow[Cmd, ByteString, ByteString, Evt, Any])(implicit system: ActorSystem, mat: ActorMaterializer, ec: ExecutionContext) = {
+  def flow[Cmd, Evt](hosts: Source[ConnectionEvent, NotUsed], resolver: Resolver[Evt],
+                     shouldReact: Boolean = false, inputOverflowStrategy: OverflowStrategy,
+                     protocol: BidiFlow[Cmd, ByteString, ByteString, Evt, Any])(implicit system: ActorSystem, mat: ActorMaterializer, ec: ExecutionContext) = {
     val processor = Processor[Cmd, Evt](resolver, Config.producerParallelism)
     val client = new Client(hosts, ClientConfig.connectionsPerHost, ClientConfig.maxFailuresPerHost, ClientConfig.failureRecoveryPeriod, ClientConfig.inputBufferSize, inputOverflowStrategy, processor, protocol.reversed)
-    Flow[Command[Cmd]].mapAsync(1)(cmd => client.send(cmd))
+    Flow[Command[Cmd]].mapAsync(1)(cmd ⇒ client.send(cmd))
   }
 
-  def rawFlow[Context, Cmd, Evt](hosts: Source[ConnectionEvent, NotUsed], resolver: Resolver[Evt], shouldReact: Boolean = false, protocol: BidiFlow[Cmd, ByteString, ByteString, Evt, Any])(implicit system: ActorSystem, mat: ActorMaterializer) = {
-
+  def rawFlow[Context, Cmd, Evt](hosts: Source[ConnectionEvent, NotUsed], resolver: Resolver[Evt],
+                                 shouldReact: Boolean = false,
+                                 protocol: BidiFlow[Cmd, ByteString, ByteString, Evt, Any])(implicit system: ActorSystem, mat: ActorMaterializer, ec: ExecutionContext) = {
     val processor = Processor[Cmd, Evt](resolver, Config.producerParallelism)
 
     Flow.fromGraph(GraphDSL.create(hosts) { implicit b ⇒
