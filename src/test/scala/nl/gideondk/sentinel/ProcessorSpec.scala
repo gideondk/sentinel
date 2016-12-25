@@ -1,15 +1,11 @@
 package nl.gideondk.sentinel
 
-import akka.event.Logging
-import akka.stream.{ ActorMaterializer, Attributes, ClosedShape }
-import akka.stream.scaladsl.{ Flow, GraphDSL, RunnableGraph, Sink, Source }
-import akka.stream.testkit.{ TestPublisher, TestSubscriber }
-import nl.gideondk.sentinel.protocol.Command.Ask
-import nl.gideondk.sentinel.protocol.Registration.SingularResponseRegistration
+import akka.stream.scaladsl.{GraphDSL, RunnableGraph, Sink, Source}
+import akka.stream.{ActorMaterializer, ClosedShape}
 import nl.gideondk.sentinel.pipeline.Processor
 import nl.gideondk.sentinel.protocol._
 
-import scala.concurrent.{ Await, Promise }
+import scala.concurrent.Await
 import scala.concurrent.duration._
 
 class ProcessorSpec extends AkkaSpec {
@@ -18,7 +14,6 @@ class ProcessorSpec extends AkkaSpec {
 
   "The AntennaStage" should {
     "correctly flow in a client, server situation" in {
-      import SimpleCommand._
       import nl.gideondk.sentinel.protocol.SimpleMessage._
 
       implicit val materializer = ActorMaterializer()

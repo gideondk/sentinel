@@ -6,10 +6,9 @@ import akka.stream.stage.{ GraphStage, GraphStageLogic, InHandler, OutHandler }
 import nl.gideondk.sentinel.protocol.{ Command, SingularCommand, StreamingCommand }
 
 class ProducerStage[In, Out] extends GraphStage[FlowShape[Command[Out], Out]] {
+  val shape = new FlowShape(in, out)
   private val in = Inlet[Command[Out]]("ProducerStage.Command.In")
   private val out = Outlet[Out]("ProducerStage.Command.Out")
-
-  val shape = new FlowShape(in, out)
 
   override def createLogic(effectiveAttributes: Attributes) = new GraphStageLogic(shape) {
     var streaming = false

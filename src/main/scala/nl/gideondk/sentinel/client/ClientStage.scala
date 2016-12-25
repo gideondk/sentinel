@@ -2,12 +2,11 @@ package nl.gideondk.sentinel.client
 
 import akka.actor.ActorSystem
 import akka.stream._
-import akka.stream.scaladsl.{ BidiFlow, GraphDSL, RunnableGraph, Sink, Source, Tcp }
+import akka.stream.scaladsl.{ BidiFlow, GraphDSL, RunnableGraph, Tcp }
 import akka.stream.stage._
 import akka.util.ByteString
-import akka.{ Done, NotUsed, stream }
+import akka.{ Done, stream }
 import nl.gideondk.sentinel.pipeline.Processor
-
 import nl.gideondk.sentinel.protocol.{ Command, Event }
 
 import scala.collection.mutable
@@ -21,13 +20,13 @@ object ClientStage {
 
   trait ConnectionClosedException
 
-  case class ConnectionClosedWithReasonException(message: String, cause: Throwable) extends Exception(message, cause) with ConnectionClosedException
-
-  case class ConnectionClosedWithoutReasonException(message: String) extends Exception(message) with ConnectionClosedException
-
   trait ConnectionEvent {
     def host: Host
   }
+
+  case class ConnectionClosedWithReasonException(message: String, cause: Throwable) extends Exception(message, cause) with ConnectionClosedException
+
+  case class ConnectionClosedWithoutReasonException(message: String) extends Exception(message) with ConnectionClosedException
 
   case class LinkUp(host: Host) extends ConnectionEvent
 
@@ -44,8 +43,6 @@ class ClientStage[Context, Cmd, Evt](connectionsPerHost: Int, maximumFailuresPer
   val connectionEventIn = Inlet[ConnectionEvent]("ClientStage.ConnectionEvent.In")
   val commandIn = Inlet[(Command[Cmd], Context)]("ClientStage.Command.In")
   val eventOut = Outlet[(Try[Event[Evt]], Context)]("ClientStage.Event.Out")
-
-  override def shape = new FanInShape2(connectionEventIn, commandIn, eventOut)
 
   override def createLogic(inheritedAttributes: Attributes): GraphStageLogic = new TimerGraphStageLogic(shape) {
     private val hosts = mutable.Map.empty[Host, Int]
@@ -264,4 +261,6 @@ class ClientStage[Context, Cmd, Evt](connectionsPerHost: Int, maximumFailuresPer
     }
 
   }
+
+  override def shape = new FanInShape2(connectionEventIn, commandIn, eventOut)
 }

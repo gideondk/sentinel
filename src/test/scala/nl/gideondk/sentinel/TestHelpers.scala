@@ -1,33 +1,25 @@
 package nl.gideondk.sentinel
 
-import org.scalatest.{ Suite, BeforeAndAfterAll, WordSpec }
-
-import akka.util.ByteString
-
-import akka.actor._
-import akka.testkit._
-
 import java.util.concurrent.atomic.AtomicInteger
 
-import org.scalactic.Constraint
-
-import language.postfixOps
-import org.scalatest.{ BeforeAndAfterAll, WordSpecLike }
-import org.scalatest.Matchers
 import akka.actor.ActorSystem
-import akka.event.{ Logging, LoggingAdapter }
-
-import scala.concurrent.duration._
-import scala.concurrent.Future
-import com.typesafe.config.{ Config, ConfigFactory }
 import akka.dispatch.Dispatchers
+import akka.event.{Logging, LoggingAdapter}
 import akka.testkit.TestEvent._
-import org.scalactic.ConversionCheckedTripleEquals
+import akka.testkit._
+import com.typesafe.config.{Config, ConfigFactory}
+import org.scalactic.{Constraint, ConversionCheckedTripleEquals}
 import org.scalatest.concurrent.ScalaFutures
 import org.scalatest.time.Span
+import org.scalatest.{BeforeAndAfterAll, Matchers, WordSpecLike}
+
+import scala.concurrent.Future
+import scala.concurrent.duration._
+import scala.language.postfixOps
 
 object AkkaSpec {
-  val testConf: Config = ConfigFactory.parseString("""
+  val testConf: Config = ConfigFactory.parseString(
+    """
       akka {
         loggers = ["akka.testkit.TestEventListener"]
         loglevel = "WARNING"
@@ -55,7 +47,7 @@ object AkkaSpec {
       .dropWhile(_ matches "(java.lang.Thread|.*AkkaSpec.?$|.*StreamSpec.?$)")
     val reduced = s.lastIndexWhere(_ == clazz.getName) match {
       case -1 ⇒ s
-      case z  ⇒ s drop (z + 1)
+      case z ⇒ s drop (z + 1)
     }
     reduced.head.replaceFirst(""".*\.""", "").replaceAll("[^a-zA-Z_0-9]", "_")
   }
@@ -64,12 +56,31 @@ object AkkaSpec {
 
 
 abstract class AkkaSpec(_system: ActorSystem)
-  extends TestKit(_system) with WordSpecLike with Matchers with BeforeAndAfterAll 
-  with ConversionCheckedTripleEquals with ScalaFutures {
+  extends TestKit(_system) with WordSpecLike with Matchers with BeforeAndAfterAll
+    with ConversionCheckedTripleEquals with ScalaFutures {
 
   implicit val patience = PatienceConfig(testKitSettings.DefaultTimeout.duration, Span(100, org.scalatest.time.Millis))
 
   implicit val ec = _system.dispatcher
+
+  override val invokeBeforeAllAndAfterAllEvenIfNoTestsAreExpected = true
+  val log: LoggingAdapter = Logging(system, this.getClass)
+
+  final override def beforeAll {
+    atStartup()
+  }
+
+  protected def atStartup() {}
+
+  final override def afterAll {
+    beforeTermination()
+    shutdown()
+    afterTermination()
+  }
+
+  protected def beforeTermination() {}
+
+  protected def afterTermination() {}
 
   def this(config: Config) = this(ActorSystem(
     AkkaSpec.getCallerName(getClass),
@@ -81,26 +92,6 @@ abstract class AkkaSpec(_system: ActorSystem)
 
   def this() = this(ActorSystem(AkkaSpec.getCallerName(getClass), AkkaSpec.testConf))
 
-  val log: LoggingAdapter = Logging(system, this.getClass)
-
-  override val invokeBeforeAllAndAfterAllEvenIfNoTestsAreExpected = true
-
-  final override def beforeAll {
-    atStartup()
-  }
-
-  final override def afterAll {
-    beforeTermination()
-    shutdown()
-    afterTermination()
-  }
-
-  protected def atStartup() {}
-
-  protected def beforeTermination() {}
-
-  protected def afterTermination() {}
-
   def spawn(dispatcherId: String = Dispatchers.DefaultDispatcherId)(body: ⇒ Unit): Unit =
     Future(body)(system.dispatchers.lookup(dispatcherId))
 
@@ -110,6 +101,7 @@ abstract class AkkaSpec(_system: ActorSystem)
     if (!sys.log.isDebugEnabled) {
       def mute(clazz: Class[_]): Unit =
         sys.eventStream.publish(Mute(DeadLettersFilter(clazz)(occurrences = Int.MaxValue)))
+
       if (messageClasses.isEmpty) mute(classOf[AnyRef])
       else messageClasses foreach mute
     }

@@ -2,7 +2,6 @@ package nl.gideondk.sentinel.pipeline
 
 import akka.stream.BidiShape
 import akka.stream.scaladsl.{ BidiFlow, Flow, GraphDSL, Merge, Sink }
-import nl.gideondk.sentinel._
 import nl.gideondk.sentinel.protocol._
 
 import scala.concurrent.ExecutionContext

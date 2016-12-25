@@ -18,14 +18,17 @@ trait Registration[A, E <: Event[A]] {
 }
 
 object Registration {
+
   case class SingularResponseRegistration[A](promise: Promise[SingularEvent[A]]) extends Registration[A, SingularEvent[A]]
 
   case class StreamReplyRegistration[A](promise: Promise[StreamEvent[A]]) extends Registration[A, StreamEvent[A]]
+
 }
 
 trait Command[Out]
 
 case class SingularCommand[Out](payload: Out) extends Command[Out]
+
 case class StreamingCommand[Out](stream: Source[Out, Any]) extends Command[Out]
 
 trait ServerCommand[Out, In]
@@ -34,15 +37,15 @@ trait ServerMetric
 
 object Command {
 
-//  case class Ask[Out](payload: Out) extends Command[Out]
+  //  case class Ask[Out](payload: Out) extends Command[Out]
 
   object Ask
 
-//  case class Tell[Out](payload: Out) extends Command[Out]
-//
-//  case class AskStream[Out](payload: Out) extends Command[Out]
-//
-//  case class SendStream[Out](stream: Source[Out, Any]) extends Command[Out]
+  //  case class Tell[Out](payload: Out) extends Command[Out]
+  //
+  //  case class AskStream[Out](payload: Out) extends Command[Out]
+  //
+  //  case class SendStream[Out](stream: Source[Out, Any]) extends Command[Out]
 
 }
 

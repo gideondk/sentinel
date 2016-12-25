@@ -2,23 +2,20 @@ package nl.gideondk.sentinel.client
 
 import java.util.concurrent.TimeUnit
 
+import akka.NotUsed
 import akka.actor.ActorSystem
 import akka.stream._
-import akka.stream.scaladsl.{ BidiFlow, Flow, GraphDSL, RunnableGraph, Sink, Source, Tcp }
-import akka.stream.stage._
+import akka.stream.scaladsl.{ BidiFlow, Flow, GraphDSL, RunnableGraph, Sink, Source }
 import akka.util.ByteString
-import akka.{ Done, NotUsed, stream }
-import nl.gideondk.sentinel.client.ClientStage.ConnectionEvent
-
-import scala.collection.mutable
-import scala.concurrent._
-import scala.concurrent.duration._
-import scala.util.{ Failure, Success, Try }
-import ClientStage._
-import Client._
 import nl.gideondk.sentinel.Config
+import nl.gideondk.sentinel.client.Client._
+import nl.gideondk.sentinel.client.ClientStage.{ ConnectionEvent, _ }
 import nl.gideondk.sentinel.pipeline.{ Processor, Resolver }
 import nl.gideondk.sentinel.protocol._
+
+import scala.concurrent._
+import scala.concurrent.duration._
+import scala.util.Try
 
 object ClientConfig {
 
@@ -34,12 +31,6 @@ object ClientConfig {
 }
 
 object Client {
-
-  trait ClientException
-
-  case class InputQueueClosed() extends Exception with ClientException
-
-  case class InputQueueUnavailable() extends Exception with ClientException
 
   def apply[Cmd, Evt](hosts: Source[ConnectionEvent, NotUsed], resolver: Resolver[Evt],
                       shouldReact: Boolean, inputOverflowStrategy: OverflowStrategy,
@@ -77,6 +68,12 @@ object Client {
         FlowShape(s.in1, s.out)
     })
   }
+
+  trait ClientException
+
+  case class InputQueueClosed() extends Exception with ClientException
+
+  case class InputQueueUnavailable() extends Exception with ClientException
 }
 
 class Client[Cmd, Evt](hosts: Source[ConnectionEvent, NotUsed],

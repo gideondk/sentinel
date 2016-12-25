@@ -1,22 +1,19 @@
 package nl.gideondk.sentinel
 
-import akka.actor.ActorSystem
-import akka.event.Logging
-import akka.stream.{ ActorMaterializer, Attributes, ClosedShape }
-import akka.stream.scaladsl.{ Broadcast, Flow, GraphDSL, Merge, RunnableGraph, Sink, Source }
-import akka.stream.testkit.{ TestPublisher, TestSubscriber }
+import akka.stream.scaladsl.{Flow, GraphDSL, RunnableGraph, Sink, Source}
+import akka.stream.testkit.{TestPublisher, TestSubscriber}
+import akka.stream.{ActorMaterializer, Attributes, ClosedShape}
 import nl.gideondk.sentinel.pipeline.ConsumerStage
+import nl.gideondk.sentinel.protocol.SimpleMessage._
 import nl.gideondk.sentinel.protocol._
-import org.scalatest._
-import protocol.SimpleMessage._
 
 import scala.concurrent._
-import duration._
+import scala.concurrent.duration._
 
 class ConsumerStageSpec extends AkkaSpec {
 
   val eventFlow = Flow[Event[SimpleMessageFormat]].flatMapConcat {
-    case x: StreamEvent[SimpleMessageFormat]   ⇒ x.chunks
+    case x: StreamEvent[SimpleMessageFormat] ⇒ x.chunks
     case x: SingularEvent[SimpleMessageFormat] ⇒ Source.single(x.data)
   }
 

@@ -1,20 +1,16 @@
 package nl.gideondk.sentinel
 
 import akka.actor.ActorSystem
-import akka.event.Logging
-import akka.stream.{ ActorMaterializer, Attributes, ClosedShape, OverflowStrategy }
-import akka.stream.scaladsl.{ Broadcast, Flow, GraphDSL, Merge, RunnableGraph, Sink, Source, Tcp }
-import akka.stream.testkit.{ TestPublisher, TestSubscriber }
+import akka.stream.scaladsl.{Flow, GraphDSL, RunnableGraph, Sink, Source, Tcp}
+import akka.stream.{ActorMaterializer, ClosedShape, OverflowStrategy}
 import akka.util.ByteString
-import nl.gideondk.sentinel.client.{ ClientStage, Host }
+import nl.gideondk.sentinel.client.{ClientStage, Host}
 import nl.gideondk.sentinel.pipeline.Processor
 import nl.gideondk.sentinel.protocol._
-import org.scalatest._
-import protocol.SimpleMessage._
 
 import scala.concurrent._
-import duration._
-import scala.util.{ Failure, Success, Try }
+import scala.concurrent.duration._
+import scala.util.{Failure, Success, Try}
 
 object ClientStageSpec {
   def mockServer(system: ActorSystem, port: Int): Unit = {

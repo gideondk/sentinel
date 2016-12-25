@@ -1,15 +1,12 @@
 package nl.gideondk.sentinel
 
 import akka.stream.ActorMaterializer
-import akka.stream._
 import akka.stream.scaladsl._
-import nl.gideondk.sentinel.protocol.Registration.SingularResponseRegistration
 import nl.gideondk.sentinel.pipeline.ProducerStage
-import nl.gideondk.sentinel.protocol.{ SimpleMessageFormat, SimpleReply, SingularCommand, StreamingCommand }
+import nl.gideondk.sentinel.protocol.{SimpleMessageFormat, SimpleReply, SingularCommand, StreamingCommand}
 
 import scala.concurrent._
 import scala.concurrent.duration._
-import scala.concurrent.Promise
 
 object ProducerStageSpec {
   def stage() = new ProducerStage[SimpleMessageFormat, SimpleMessageFormat]()

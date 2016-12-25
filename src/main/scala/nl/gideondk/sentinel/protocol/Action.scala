@@ -20,24 +20,24 @@ object ProducerAction {
     def f: In ⇒ Future[Out]
   }
 
+  trait ConsumeStream[E, C] extends StreamReaction[E, C] {
+    def f: E ⇒ Source[E, Any] ⇒ Future[C]
+  }
+
+  trait ProduceStream[E, C] extends StreamReaction[E, C] {
+    def f: E ⇒ Future[Source[C, Any]]
+  }
+
   object Signal {
     def apply[E, C](fun: E ⇒ Future[C]): Signal[E, C] = new Signal[E, C] {
       val f = fun
     }
   }
 
-  trait ConsumeStream[E, C] extends StreamReaction[E, C] {
-    def f: E ⇒ Source[E, Any] ⇒ Future[C]
-  }
-
   object ConsumeStream {
     def apply[E, A <: E, B <: E, C](fun: A ⇒ Source[B, Any] ⇒ Future[C]): ConsumeStream[E, C] = new ConsumeStream[E, C] {
       val f = fun.asInstanceOf[E ⇒ Source[E, Any] ⇒ Future[C]]
     }
-  }
-
-  trait ProduceStream[E, C] extends StreamReaction[E, C] {
-    def f: E ⇒ Future[Source[C, Any]]
   }
 
   object ProduceStream {
