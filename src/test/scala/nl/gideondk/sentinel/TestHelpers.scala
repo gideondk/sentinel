@@ -14,7 +14,7 @@ import scala.language.postfixOps
 abstract class SentinelSpec(_system: ActorSystem)
     extends TestKit(_system) with WordSpecLike with Matchers with BeforeAndAfterAll with ScalaFutures {
 
-  implicit val patience = PatienceConfig(testKitSettings.DefaultTimeout.duration, Span(500, org.scalatest.time.Millis))
+  implicit val patience = PatienceConfig(testKitSettings.DefaultTimeout.duration, Span(1500, org.scalatest.time.Millis))
   override val invokeBeforeAllAndAfterAllEvenIfNoTestsAreExpected = true
   implicit val ec = _system.dispatcher
 
