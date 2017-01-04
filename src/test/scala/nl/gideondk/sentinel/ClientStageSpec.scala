@@ -4,6 +4,7 @@ import akka.actor.ActorSystem
 import akka.stream.scaladsl.{ Flow, GraphDSL, RunnableGraph, Sink, Source, Tcp }
 import akka.stream.{ ActorMaterializer, ClosedShape, OverflowStrategy }
 import akka.util.ByteString
+import nl.gideondk.sentinel.client.ClientStage.{ HostEvent, NoConnectionsAvailableException }
 import nl.gideondk.sentinel.client.{ ClientStage, Host }
 import nl.gideondk.sentinel.pipeline.Processor
 import nl.gideondk.sentinel.protocol._
@@ -27,11 +28,13 @@ object ClientStageSpec {
 
     binding.onComplete {
       case Success(b) ⇒
-        println("Server started, listening on: " + b.localAddress)
       case Failure(e) ⇒
-        println(s"Server could not bind to localhost:$port: ${e.getMessage}")
         system.terminate()
     }
+  }
+
+  def createCommand(s: String) = {
+    (SingularCommand[SimpleMessageFormat](SimpleReply(s)), Promise[Event[SimpleMessageFormat]]())
   }
 }
 
@@ -41,23 +44,25 @@ class ClientStageSpec extends SentinelSpec(ActorSystem()) {
 
   "The ClientStage" should {
     "keep message order intact" in {
-      val server = mockServer(system, 9000)
+      val port = TestHelpers.portNumber.incrementAndGet()
+      val server = mockServer(system, port)
+
       implicit val materializer = ActorMaterializer()
 
       type Context = Promise[Event[SimpleMessageFormat]]
 
       val numberOfMessages = 1024
 
-      val messages = (for (i ← 0 to numberOfMessages) yield (SingularCommand[SimpleMessageFormat](SimpleReply(i.toString)), Promise[Event[SimpleMessageFormat]]())).toList
-      val sink = Sink.foreach[(Try[Event[SimpleMessageFormat]], Promise[Event[SimpleMessageFormat]])] { case (event, context) ⇒ context.complete(event) }
+      val messages = (for (i ← 0 to numberOfMessages) yield (createCommand(i.toString))).toList
+      val sink = Sink.foreach[(Try[Event[SimpleMessageFormat]], Context)] { case (event, context) ⇒ context.complete(event) }
 
       val g = RunnableGraph.fromGraph(GraphDSL.create(Source.queue[(Command[SimpleMessageFormat], Promise[Event[SimpleMessageFormat]])](numberOfMessages, OverflowStrategy.backpressure)) { implicit b ⇒
         source ⇒
           import GraphDSL.Implicits._
 
-          val s = b.add(new ClientStage[Context, SimpleMessageFormat, SimpleMessageFormat](32, 8, 2 seconds, Processor(SimpleHandler, 1, false), SimpleMessage.protocol.reversed))
+          val s = b.add(new ClientStage[Context, SimpleMessageFormat, SimpleMessageFormat](32, 8, 2 seconds, true, Processor(SimpleHandler, 1, false), SimpleMessage.protocol.reversed))
 
-          Source.single(ClientStage.LinkUp(Host("localhost", 9000))) ~> s.in0
+          Source.single(ClientStage.HostUp(Host("localhost", port))) ~> s.in0
           source.out ~> s.in1
 
           s.out ~> b.add(sink)
@@ -73,6 +78,49 @@ class ClientStageSpec extends SentinelSpec(ActorSystem()) {
         sourceQueue.complete()
         result should equal(messages.map(x ⇒ SingularEvent(x._1.payload)))
       }
+    }
+
+    "handle host up and down events" in {
+      val port = TestHelpers.portNumber.incrementAndGet()
+      val server = mockServer(system, port)
+
+      implicit val materializer = ActorMaterializer()
+
+      type Context = Promise[Event[SimpleMessageFormat]]
+
+      val hostEvents = Source.queue[HostEvent](10, OverflowStrategy.backpressure)
+      val commands = Source.queue[(Command[SimpleMessageFormat], Context)](10, OverflowStrategy.backpressure)
+      val events = Sink.queue[(Try[Event[SimpleMessageFormat]], Context)]
+
+      val (hostQueue, commandQueue, eventQueue) = RunnableGraph.fromGraph(GraphDSL.create(hostEvents, commands, events)((_, _, _)) { implicit b ⇒
+        (hostEvents, commands, events) ⇒
+
+          import GraphDSL.Implicits._
+
+          val s = b.add(new ClientStage[Context, SimpleMessageFormat, SimpleMessageFormat](1, 8, 2 seconds, true, Processor(SimpleHandler, 1, false), SimpleMessage.protocol.reversed))
+
+          hostEvents ~> s.in0
+          commands ~> s.in1
+
+          s.out ~> events
+
+          ClosedShape
+      }).run()
+
+      commandQueue.offer(createCommand(""))
+      Await.result(eventQueue.pull(), 5 seconds).get._1 shouldEqual Failure(NoConnectionsAvailableException)
+
+      hostQueue.offer(ClientStage.HostUp(Host("localhost", port)))
+      Thread.sleep(200)
+
+      commandQueue.offer(createCommand(""))
+      Await.result(eventQueue.pull(), 5 seconds).get._1 shouldEqual Success(SingularEvent(SimpleReply("")))
+
+      hostQueue.offer(ClientStage.HostDown(Host("localhost", port)))
+      Thread.sleep(200)
+
+      commandQueue.offer(createCommand(""))
+      Await.result(eventQueue.pull(), 5 seconds).get._1 shouldEqual Failure(NoConnectionsAvailableException)
     }
   }
 }

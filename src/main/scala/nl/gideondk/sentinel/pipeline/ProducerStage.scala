@@ -36,7 +36,7 @@ class ProducerStage[In, Out] extends GraphStage[FlowShape[Command[Out], Out]] {
 
     def stream(outStream: Source[Out, Any]): Unit = {
       streaming = true
-      val sinkIn = new SubSinkInlet[Out]("RenderingSink")
+      val sinkIn = new SubSinkInlet[Out]("ProducerStage.Command.Out.ChunkSubStream")
       sinkIn.setHandler(new InHandler {
         override def onPush(): Unit = push(out, sinkIn.grab())
 

@@ -65,7 +65,6 @@ object ConsumerAction {
   case object ConsumeChunkAndEndStream extends ConsumerAction
 
   case object Ignore extends ConsumerAction
-
 }
 
 case class ConsumerActionAndData[Evt](action: ConsumerAction, data: Evt)

@@ -31,55 +31,32 @@ case class SingularCommand[Out](payload: Out) extends Command[Out]
 
 case class StreamingCommand[Out](stream: Source[Out, Any]) extends Command[Out]
 
-trait ServerCommand[Out, In]
-
-trait ServerMetric
-
-object Command {
-
-  //  case class Ask[Out](payload: Out) extends Command[Out]
-
-  object Ask
-
-  //  case class Tell[Out](payload: Out) extends Command[Out]
-  //
-  //  case class AskStream[Out](payload: Out) extends Command[Out]
-  //
-  //  case class SendStream[Out](stream: Source[Out, Any]) extends Command[Out]
-
-}
-
-object ServerCommand {
-
-  case class AskAll[Cmd, Evt](payload: Cmd, promise: Promise[List[Evt]]) extends ServerCommand[Cmd, Evt]
-
-  case class AskAllHosts[Cmd, Evt](payload: Cmd, promise: Promise[List[Evt]]) extends ServerCommand[Cmd, Evt]
-
-  case class AskAny[Cmd, Evt](payload: Cmd, promise: Promise[Evt]) extends ServerCommand[Cmd, Evt]
-
-}
-
-object ServerMetric {
-
-  case object ConnectedSockets extends ServerMetric
-
-  case object ConnectedHosts extends ServerMetric
-
-}
-
-//object Reply {
+//trait ServerCommand[Out, In]
 //
-//  case class Response[Cmd](payload: Cmd) extends Reply[Cmd]
+//trait ServerMetric
 //
-//  case class StreamResponseChunk[Cmd](payload: Cmd) extends Reply[Cmd]
+//object ServerCommand {
+//
+//  case class AskAll[Cmd, Evt](payload: Cmd, promise: Promise[List[Evt]]) extends ServerCommand[Cmd, Evt]
+//
+//  case class AskAllHosts[Cmd, Evt](payload: Cmd, promise: Promise[List[Evt]]) extends ServerCommand[Cmd, Evt]
+//
+//  case class AskAny[Cmd, Evt](payload: Cmd, promise: Promise[Evt]) extends ServerCommand[Cmd, Evt]
 //
 //}
-
-object Management {
-
-  trait ManagementMessage
-
-  case class RegisterTcpHandler(h: ActorRef) extends ManagementMessage
-
-}
-
+//
+//object ServerMetric {
+//
+//  case object ConnectedSockets extends ServerMetric
+//
+//  case object ConnectedHosts extends ServerMetric
+//
+//}
+//
+////object Reply {
+////
+////  case class Response[Cmd](payload: Cmd) extends Reply[Cmd]
+////
+////  case class StreamResponseChunk[Cmd](payload: Cmd) extends Reply[Cmd]
+////
+////}

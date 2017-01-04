@@ -20,7 +20,7 @@ object ClientStage {
 
   trait ConnectionClosedException
 
-  trait ConnectionEvent {
+  trait HostEvent {
     def host: Host
   }
 
@@ -28,9 +28,9 @@ object ClientStage {
 
   case class ConnectionClosedWithoutReasonException(message: String) extends Exception(message) with ConnectionClosedException
 
-  case class LinkUp(host: Host) extends ConnectionEvent
+  case class HostUp(host: Host) extends HostEvent
 
-  case class LinkDown(host: Host) extends ConnectionEvent
+  case class HostDown(host: Host) extends HostEvent
 
   case object NoConnectionsAvailableException extends Exception
 
@@ -38,9 +38,9 @@ object ClientStage {
 
 import nl.gideondk.sentinel.client.ClientStage._
 
-class ClientStage[Context, Cmd, Evt](connectionsPerHost: Int, maximumFailuresPerHost: Int, recoveryPeriod: FiniteDuration, processor: Processor[Cmd, Evt], protocol: BidiFlow[ByteString, Evt, Cmd, ByteString, Any])(implicit system: ActorSystem, mat: ActorMaterializer) extends GraphStage[FanInShape2[ConnectionEvent, (Command[Cmd], Context), (Try[Event[Evt]], Context)]] {
+class ClientStage[Context, Cmd, Evt](connectionsPerHost: Int, maximumFailuresPerHost: Int, recoveryPeriod: FiniteDuration, finishGracefully: Boolean, processor: Processor[Cmd, Evt], protocol: BidiFlow[ByteString, Evt, Cmd, ByteString, Any])(implicit system: ActorSystem, mat: ActorMaterializer) extends GraphStage[FanInShape2[HostEvent, (Command[Cmd], Context), (Try[Event[Evt]], Context)]] {
 
-  val connectionEventIn = Inlet[ConnectionEvent]("ClientStage.ConnectionEvent.In")
+  val connectionEventIn = Inlet[HostEvent]("ClientStage.ConnectionEvent.In")
   val commandIn = Inlet[(Command[Cmd], Context)]("ClientStage.Command.In")
   val eventOut = Outlet[(Try[Event[Evt]], Context)]("ClientStage.Event.Out")
 
@@ -50,6 +50,7 @@ class ClientStage[Context, Cmd, Evt](connectionsPerHost: Int, maximumFailuresPer
     private val connectionPool = mutable.Queue.empty[Connection]
     private val failures = mutable.Queue.empty[(Try[Event[Evt]], Context)]
     private var antennaId = 0
+    private var closingOnCommandIn = false
 
     override def preStart() = {
       pull(connectionEventIn)
@@ -58,7 +59,7 @@ class ClientStage[Context, Cmd, Evt](connectionsPerHost: Int, maximumFailuresPer
     }
 
     def nextId() = {
-      antennaId += 1;
+      antennaId += 1
       antennaId
     }
 
@@ -109,7 +110,6 @@ class ClientStage[Context, Cmd, Evt](connectionsPerHost: Int, maximumFailuresPer
       val host = connection.host
       val totalFailure = hostFailures.getOrElse(host, 0) + 1
       hostFailures(host) = totalFailure
-
       system.log.warning(s"Connection ${connection.connectionId} to $host failed due to ${cause.getMessage}")
 
       if (hostFailures(host) >= maximumFailuresPerHost) {
@@ -146,8 +146,8 @@ class ClientStage[Context, Cmd, Evt](connectionsPerHost: Int, maximumFailuresPer
     setHandler(connectionEventIn, new InHandler {
       override def onPush() = {
         grab(connectionEventIn) match {
-          case LinkUp(connection)   ⇒ addHost(connection)
-          case LinkDown(connection) ⇒ removeHost(connection)
+          case HostUp(connection)   ⇒ addHost(connection)
+          case HostDown(connection) ⇒ removeHost(connection)
         }
         pull(connectionEventIn)
       }
@@ -161,7 +161,15 @@ class ClientStage[Context, Cmd, Evt](connectionsPerHost: Int, maximumFailuresPer
     setHandler(commandIn, new InHandler {
       override def onPush() = pullCommand(shouldInitializeConnection = true)
 
-      override def onUpstreamFinish() = completeStage()
+      override def onUpstreamFinish() = {
+        if (finishGracefully) {
+          closingOnCommandIn = true
+          connectionPool.foreach(_.requestClose())
+        } else {
+          connectionPool.foreach(_.close(None))
+          completeStage()
+        }
+      }
 
       override def onUpstreamFailure(ex: Throwable) =
         failStage(throw new IllegalStateException(s"Requests stream failed", ex))
@@ -175,13 +183,16 @@ class ClientStage[Context, Cmd, Evt](connectionsPerHost: Int, maximumFailuresPer
             .dequeueFirst(_.canBePulledForEvent)
             .foreach(connection ⇒ {
               if (isAvailable(eventOut)) {
-                push(eventOut, connection.pullEvent)
+                val event = connection.pullEvent
+                push(eventOut, event)
               }
               connectionPool.enqueue(connection)
             })
         }
 
-      override def onDownstreamFinish() = completeStage()
+      override def onDownstreamFinish() = {
+        completeStage()
+      }
     })
 
     override def onTimer(timerKey: Any) = hostFailures.clear()
@@ -191,6 +202,7 @@ class ClientStage[Context, Cmd, Evt](connectionsPerHost: Int, maximumFailuresPer
       private val connectionEventIn = new SubSinkInlet[Event[Evt]](s"Connection.[$host].[$connectionId].in")
       private val connectionCommandOut = new SubSourceOutlet[Command[Cmd]](s"Connection.[$host].[$connectionId].out")
       private val contexts = mutable.Queue.empty[Context]
+      private var closing = false
 
       def canBePushedForCommand = connectionCommandOut.isAvailable
 
@@ -204,14 +216,27 @@ class ClientStage[Context, Cmd, Evt](connectionsPerHost: Int, maximumFailuresPer
       def pullEvent() = {
         val event = connectionEventIn.grab()
         val context = contexts.dequeue()
-        connectionEventIn.pull()
-        (Success(event), context)
+
+        if (closing) {
+          close(None)
+          (Success(event), context)
+        } else {
+          connectionEventIn.pull()
+          (Success(event), context)
+        }
+      }
+
+      def requestClose() = {
+        closing = true
+        if (contexts.length == 0) {
+          close(None)
+        }
       }
 
       def close(cause: Option[Throwable]) = {
         val exception = cause match {
-          case Some(cause) ⇒ ConnectionClosedWithReasonException(s"Failure to process request to $host at antenna $connectionId", cause)
-          case None        ⇒ ConnectionClosedWithoutReasonException(s"Failure to process request to $host antenna $connectionId")
+          case Some(cause) ⇒ ConnectionClosedWithReasonException(s"Failure to process request to $host at connection $connectionId", cause)
+          case None        ⇒ ConnectionClosedWithoutReasonException(s"Failure to process request to $host connection $connectionId")
         }
 
         contexts.dequeueAll(_ ⇒ true).foreach(context ⇒ {
@@ -228,7 +253,9 @@ class ClientStage[Context, Cmd, Evt](connectionsPerHost: Int, maximumFailuresPer
             push(eventOut, connection.pullEvent)
           }
 
-          override def onUpstreamFinish() = removeConnection(connection, None)
+          override def onUpstreamFinish() = {
+            removeConnection(connection, None)
+          }
 
           override def onUpstreamFailure(reason: Throwable) = reason match {
             case t: TimeoutException ⇒ removeConnection(connection, Some(t))
@@ -239,7 +266,9 @@ class ClientStage[Context, Cmd, Evt](connectionsPerHost: Int, maximumFailuresPer
         connectionCommandOut.setHandler(new OutHandler {
           override def onPull() = pullCommand(shouldInitializeConnection = true)
 
-          override def onDownstreamFinish() = ()
+          override def onDownstreamFinish() = {
+            ()
+          }
         })
 
         RunnableGraph.fromGraph(GraphDSL.create() { implicit b ⇒

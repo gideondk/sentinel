@@ -77,7 +77,7 @@ class ConsumerStage[Evt, Cmd](resolver: Resolver[Evt]) extends GraphStage[FanOut
     }
 
     def startStream(initialChunk: Option[Evt]): Unit = {
-      chunkSource = new SubSourceOutlet[Evt]("ChunkSource")
+      chunkSource = new SubSourceOutlet[Evt]("ConsumerStage.Event.In.ChunkSubStream")
       chunkSource.setHandler(pullThroughHandler)
       setHandler(eventIn, substreamHandler)
       setHandler(signalOut, substreamHandler)
