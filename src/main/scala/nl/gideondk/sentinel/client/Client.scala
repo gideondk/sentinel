@@ -6,7 +6,7 @@ import akka.NotUsed
 import akka.actor.ActorSystem
 import akka.event.Logging
 import akka.stream._
-import akka.stream.scaladsl.{ BidiFlow, Broadcast, Flow, GraphDSL, RunnableGraph, Sink, Source }
+import akka.stream.scaladsl.{ BidiFlow, Broadcast, Flow, GraphDSL, Merge, RunnableGraph, Sink, Source }
 import akka.util.ByteString
 import nl.gideondk.sentinel.Config
 import nl.gideondk.sentinel.client.Client._
@@ -28,11 +28,32 @@ object ClientConfig {
   val maxFailuresPerHost = config.getInt("client.host.max-failures")
   val failureRecoveryPeriod = Duration(config.getDuration("client.host.failure-recovery-duration").toNanos, TimeUnit.NANOSECONDS)
 
+  val reconnectDuration = Duration(config.getDuration("client.host.reconnect-duration").toNanos, TimeUnit.NANOSECONDS)
+  val shouldReconnect = config.getBoolean("client.host.auto-reconnect")
+
   val clientParallelism = config.getInt("client.parallelism")
   val inputBufferSize = config.getInt("client.input-buffer-size")
 }
 
 object Client {
+
+  private def reconnectLogic[M](builder: GraphDSL.Builder[M], hostEventSource: Source[HostEvent, NotUsed]#Shape, hostEventIn: Inlet[HostEvent], hostEventOut: Outlet[HostEvent])(implicit system: ActorSystem) = {
+    import GraphDSL.Implicits._
+    implicit val b = builder
+
+    val delay = ClientConfig.reconnectDuration
+    val groupDelay = Flow[HostEvent].groupBy[Host](1024, { x: HostEvent ⇒ x.host }).delay(delay).map { x ⇒ system.log.warning(s"Reconnecting after ${delay.toSeconds}s for ${x.host}"); HostUp(x.host) }.mergeSubstreams
+
+    if (ClientConfig.shouldReconnect) {
+      val connectionMerge = builder.add(Merge[HostEvent](2))
+      hostEventSource ~> connectionMerge ~> hostEventIn
+      hostEventOut ~> b.add(groupDelay) ~> connectionMerge
+    } else {
+      println("No reconnect handler")
+      hostEventSource ~> hostEventIn
+      hostEventOut ~> Sink.ignore
+    }
+  }
 
   def apply[Cmd, Evt](hosts: Source[HostEvent, NotUsed], resolver: Resolver[Evt],
                       shouldReact: Boolean, inputOverflowStrategy: OverflowStrategy,
@@ -62,14 +83,15 @@ object Client {
         import GraphDSL.Implicits._
 
         val s = b.add(new ClientStage[Context, Cmd, Evt](ClientConfig.connectionsPerHost, ClientConfig.maxFailuresPerHost, ClientConfig.failureRecoveryPeriod, true, processor, protocol.reversed))
-        connections ~> s.in0
+
+        reconnectLogic(b, connections, s.in2, s.out2)
 
         val input = b add Flow[Command[Cmd]].map(x ⇒ (x, Promise[Event[Evt]]()))
         val broadcast = b add Broadcast[(Command[Cmd], Promise[Event[Evt]])](2)
 
-        val output = b add Flow[(Command[Cmd], Promise[Event[Evt]])].mapAsync(ClientConfig.clientParallelism)(_._2.future).withAttributes(Attributes.logLevels(onElement = Logging.WarningLevel))
+        val output = b add Flow[(Command[Cmd], Promise[Event[Evt]])].mapAsync(ClientConfig.clientParallelism)(_._2.future)
 
-        s.out ~> eventHandler
+        s.out1 ~> eventHandler
         input ~> broadcast
         broadcast ~> output
         broadcast ~> s.in1
@@ -88,8 +110,10 @@ object Client {
         import GraphDSL.Implicits._
 
         val s = b.add(new ClientStage[Context, Cmd, Evt](ClientConfig.connectionsPerHost, ClientConfig.maxFailuresPerHost, ClientConfig.failureRecoveryPeriod, true, processor, protocol.reversed))
-        connections ~> s.in0
-        FlowShape(s.in1, s.out)
+
+        reconnectLogic(b, connections, s.in2, s.out2)
+
+        FlowShape(s.in1, s.out2)
     })
   }
 
@@ -122,10 +146,11 @@ class Client[Cmd, Evt](hosts: Source[HostEvent, NotUsed],
 
       val s = b.add(new ClientStage[Context, Cmd, Evt](connectionsPerHost, maximumFailuresPerHost, recoveryPeriod, true, processor, protocol))
 
-      b.add(hosts) ~> s.in0
+      reconnectLogic(b, b.add(hosts), s.in2, s.out2)
+
       source.out ~> s.in1
 
-      s.out ~> b.add(eventHandler)
+      s.out1 ~> b.add(eventHandler)
 
       ClosedShape
   })

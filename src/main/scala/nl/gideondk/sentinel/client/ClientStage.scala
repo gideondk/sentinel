@@ -3,6 +3,7 @@ package nl.gideondk.sentinel.client
 import akka.actor.ActorSystem
 import akka.stream._
 import akka.stream.scaladsl.{ BidiFlow, GraphDSL, RunnableGraph, Tcp }
+import akka.stream.stage.GraphStageLogic.EagerTerminateOutput
 import akka.stream.stage._
 import akka.util.ByteString
 import akka.{ Done, stream }
@@ -38,9 +39,14 @@ object ClientStage {
 
 import nl.gideondk.sentinel.client.ClientStage._
 
-class ClientStage[Context, Cmd, Evt](connectionsPerHost: Int, maximumFailuresPerHost: Int, recoveryPeriod: FiniteDuration, finishGracefully: Boolean, processor: Processor[Cmd, Evt], protocol: BidiFlow[ByteString, Evt, Cmd, ByteString, Any])(implicit system: ActorSystem, mat: ActorMaterializer) extends GraphStage[FanInShape2[HostEvent, (Command[Cmd], Context), (Try[Event[Evt]], Context)]] {
+class ClientStage[Context, Cmd, Evt](connectionsPerHost: Int, maximumFailuresPerHost: Int,
+                                     recoveryPeriod: FiniteDuration, finishGracefully: Boolean, processor: Processor[Cmd, Evt],
+                                     protocol: BidiFlow[ByteString, Evt, Cmd, ByteString, Any])(implicit system: ActorSystem, mat: ActorMaterializer)
+
+    extends GraphStage[BidiShape[(Command[Cmd], Context), (Try[Event[Evt]], Context), HostEvent, HostEvent]] {
 
   val connectionEventIn = Inlet[HostEvent]("ClientStage.ConnectionEvent.In")
+  val connectionEventOut = Outlet[HostEvent]("ClientStage.ConnectionEvent.Out")
   val commandIn = Inlet[(Command[Cmd], Context)]("ClientStage.Command.In")
   val eventOut = Outlet[(Try[Event[Evt]], Context)]("ClientStage.Event.Out")
 
@@ -114,6 +120,7 @@ class ClientStage[Context, Cmd, Evt](connectionsPerHost: Int, maximumFailuresPer
 
       if (hostFailures(host) >= maximumFailuresPerHost) {
         system.log.error(cause, s"Dropping $host, failed $totalFailure times")
+        emit(connectionEventOut, HostDown(host))
         removeHost(host, Some(cause))
       } else {
         removeConnection(connection, Some(cause))
@@ -142,6 +149,8 @@ class ClientStage[Context, Cmd, Evt](connectionsPerHost: Int, maximumFailuresPer
 
       pullCommand(true)
     }
+
+    setHandler(connectionEventOut, EagerTerminateOutput)
 
     setHandler(connectionEventIn, new InHandler {
       override def onPush() = {
@@ -195,7 +204,9 @@ class ClientStage[Context, Cmd, Evt](connectionsPerHost: Int, maximumFailuresPer
       }
     })
 
-    override def onTimer(timerKey: Any) = hostFailures.clear()
+    override def onTimer(timerKey: Any) = {
+      hostFailures.clear()
+    }
 
     case class Connection(host: Host, connectionId: Int) {
       connection ⇒
@@ -288,8 +299,7 @@ class ClientStage[Context, Cmd, Evt](connectionsPerHost: Int, maximumFailuresPer
         connectionEventIn.pull()
       }
     }
-
   }
 
-  override def shape = new FanInShape2(connectionEventIn, commandIn, eventOut)
+  override def shape = new BidiShape(commandIn, eventOut, connectionEventIn, connectionEventOut)
 }

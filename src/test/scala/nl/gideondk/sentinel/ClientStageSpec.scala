@@ -23,11 +23,11 @@ object ClientStageSpec {
       conn handleWith Flow[ByteString]
     }
 
-    val connections = Tcp().bind("localhost", port)
+    val connections = Tcp().bind("localhost", port, halfClose = true)
     val binding = connections.to(handler).run()
 
     binding.onComplete {
-      case Success(b) ⇒
+      case Success(b) ⇒ println("Bound to: " + b.localAddress)
       case Failure(e) ⇒
         system.terminate()
     }
@@ -62,10 +62,11 @@ class ClientStageSpec extends SentinelSpec(ActorSystem()) {
 
           val s = b.add(new ClientStage[Context, SimpleMessageFormat, SimpleMessageFormat](32, 8, 2 seconds, true, Processor(SimpleHandler, 1, false), SimpleMessage.protocol.reversed))
 
-          Source.single(ClientStage.HostUp(Host("localhost", port))) ~> s.in0
+          Source.single(ClientStage.HostUp(Host("localhost", port))) ~> s.in2
           source.out ~> s.in1
 
-          s.out ~> b.add(sink)
+          s.out1 ~> b.add(sink)
+          s.out2 ~> b.add(Sink.ignore)
 
           ClosedShape
       })
@@ -99,10 +100,11 @@ class ClientStageSpec extends SentinelSpec(ActorSystem()) {
 
           val s = b.add(new ClientStage[Context, SimpleMessageFormat, SimpleMessageFormat](1, 8, 2 seconds, true, Processor(SimpleHandler, 1, false), SimpleMessage.protocol.reversed))
 
-          hostEvents ~> s.in0
+          hostEvents ~> s.in2
           commands ~> s.in1
 
-          s.out ~> events
+          s.out1 ~> events
+          s.out2 ~> b.add(Sink.ignore)
 
           ClosedShape
       }).run()
