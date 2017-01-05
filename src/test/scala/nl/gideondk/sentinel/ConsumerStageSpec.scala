@@ -215,7 +215,7 @@ class ConsumerStageSpec extends SentinelSpec(ActorSystem()) {
 
       val items = List(SimpleCommand(PING_PONG, ""), SimpleCommand(PING_PONG, ""), SimpleCommand(PING_PONG, ""))
 
-      val g = RunnableGraph.fromGraph(GraphDSL.create(Sink.seq[(SimpleMessageFormat, ProducerAction[SimpleMessageFormat, SimpleMessageFormat])]) { implicit b ⇒
+      val g = RunnableGraph.fromGraph(GraphDSL.create(Sink.seq[(Event[SimpleMessageFormat], ProducerAction[SimpleMessageFormat, SimpleMessageFormat])]) { implicit b ⇒
         sink ⇒
           import GraphDSL.Implicits._
 
@@ -229,7 +229,7 @@ class ConsumerStageSpec extends SentinelSpec(ActorSystem()) {
       })
 
       whenReady(g.run()) { result ⇒
-        result.map(_._1) should equal(items)
+        result.map(_._1).asInstanceOf[Seq[SingularEvent[SimpleMessageFormat]]].map(_.data) should equal(items)
       }
     }
   }

@@ -63,6 +63,5 @@ class ProducerStage[In, Out] extends GraphStage[FlowShape[Command[Out], Out]] {
       sinkIn.pull()
       outStream.runWith(sinkIn.sink)(subFusingMaterializer)
     }
-
   }
 }

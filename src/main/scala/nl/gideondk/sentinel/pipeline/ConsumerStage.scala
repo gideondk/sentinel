@@ -6,9 +6,9 @@ import akka.stream.stage.{ GraphStage, GraphStageLogic, InHandler, OutHandler }
 import nl.gideondk.sentinel.protocol.ConsumerAction._
 import nl.gideondk.sentinel.protocol._
 
-class ConsumerStage[Evt, Cmd](resolver: Resolver[Evt]) extends GraphStage[FanOutShape2[Evt, (Evt, ProducerAction[Evt, Cmd]), Event[Evt]]] {
+class ConsumerStage[Evt, Cmd](resolver: Resolver[Evt]) extends GraphStage[FanOutShape2[Evt, (Event[Evt], ProducerAction[Evt, Cmd]), Event[Evt]]] {
   private val eventIn = Inlet[Evt]("ConsumerStage.Event.In")
-  private val actionOut = Outlet[(Evt, ProducerAction[Evt, Cmd])]("ConsumerStage.Action.Out")
+  private val actionOut = Outlet[(Event[Evt], ProducerAction[Evt, Cmd])]("ConsumerStage.Action.Out")
   private val signalOut = Outlet[Event[Evt]]("ConsumerStage.Signal.Out")
 
   val shape = new FanOutShape2(eventIn, actionOut, signalOut)
@@ -88,29 +88,38 @@ class ConsumerStage[Evt, Cmd](resolver: Resolver[Evt]) extends GraphStage[FanOut
       }
     }
 
-    def consumeStream(initialChunk: Evt): Unit = {
-      //      emit(actionOut, (initialChunk, ProducerAction.ConsumeStream(Source.fromGraph(chunkSource.source))))
+    def startStreamForAction(initialChunk: Evt, action: ProducerAction.StreamReaction[Evt, Cmd]): Unit = {
+      chunkSource = new SubSourceOutlet[Evt]("ConsumerStage.Event.In.ChunkSubStream")
+      chunkSource.setHandler(pullThroughHandler)
+      setHandler(eventIn, substreamHandler)
+      setHandler(actionOut, substreamHandler)
+
+      push(actionOut, (StreamEvent(Source.single(initialChunk) ++ Source.fromGraph(chunkSource.source)), action))
     }
 
     def onPush(): Unit = {
       val evt = grab(eventIn)
 
       resolver.process(evt) match {
-        case x: ProducerAction.Signal[Evt, Cmd] ⇒ emit(actionOut, (evt, x))
+        case x: ProducerAction.Signal[Evt, Cmd]        ⇒ push(actionOut, (SingularEvent(evt), x))
 
-        //        case x: ProducerAction.ProduceStream[Evt, Cmd] ⇒ emit(actionOut, (evt, x))
+        case x: ProducerAction.ProduceStream[Evt, Cmd] ⇒ push(actionOut, (SingularEvent(evt), x))
 
-        case AcceptSignal                       ⇒ push(signalOut, SingularEvent(evt))
+        case x: ProducerAction.ConsumeStream[Evt, Cmd] ⇒ startStreamForAction(evt, x)
 
-        case AcceptError                        ⇒ push(signalOut, SingularErrorEvent(evt))
+        case x: ProducerAction.ProcessStream[Evt, Cmd] ⇒ startStreamForAction(evt, x)
 
-        case StartStream                        ⇒ startStream(None)
+        case AcceptSignal                              ⇒ push(signalOut, SingularEvent(evt))
 
-        case ConsumeStreamChunk                 ⇒ startStream(Some(evt))
+        case AcceptError                               ⇒ push(signalOut, SingularErrorEvent(evt))
 
-        case ConsumeChunkAndEndStream           ⇒ push(signalOut, StreamEvent(Source.single(evt)))
+        case StartStream                               ⇒ startStream(None)
 
-        case Ignore                             ⇒ ()
+        case ConsumeStreamChunk                        ⇒ startStream(Some(evt))
+
+        case ConsumeChunkAndEndStream                  ⇒ push(signalOut, StreamEvent(Source.single(evt)))
+
+        case Ignore                                    ⇒ ()
       }
     }
 

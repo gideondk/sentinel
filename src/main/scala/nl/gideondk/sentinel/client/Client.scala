@@ -49,7 +49,6 @@ object Client {
       hostEventSource ~> connectionMerge ~> hostEventIn
       hostEventOut ~> b.add(groupDelay) ~> connectionMerge
     } else {
-      println("No reconnect handler")
       hostEventSource ~> hostEventIn
       hostEventOut ~> Sink.ignore
     }

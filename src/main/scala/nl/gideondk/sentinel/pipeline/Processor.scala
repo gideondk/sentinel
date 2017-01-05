@@ -14,9 +14,11 @@ object Processor {
     val consumerStage = new ConsumerStage[Evt, Cmd](resolver)
     val producerStage = new ProducerStage[Evt, Cmd]()
 
-    val functionApply = Flow[(Evt, ProducerAction[Evt, Cmd])].mapAsync[Command[Cmd]](producerParallism) {
-      case (evt, x: ProducerAction.Signal[Evt, Cmd])        ⇒ x.f(evt).map(SingularCommand[Cmd])
-      case (evt, x: ProducerAction.ProduceStream[Evt, Cmd]) ⇒ x.f(evt).map(StreamingCommand[Cmd])
+    val functionApply = Flow[(Event[Evt], ProducerAction[Evt, Cmd])].mapAsync[Command[Cmd]](producerParallism) {
+      case (SingularEvent(evt), x: ProducerAction.Signal[Evt, Cmd])        ⇒ x.f(evt).map(SingularCommand[Cmd])
+      case (SingularEvent(evt), x: ProducerAction.ProduceStream[Evt, Cmd]) ⇒ x.f(evt).map(StreamingCommand[Cmd])
+      case (StreamEvent(evt), x: ProducerAction.ConsumeStream[Evt, Cmd])   ⇒ x.f(evt).map(SingularCommand[Cmd])
+      case (StreamEvent(evt), x: ProducerAction.ProcessStream[Evt, Cmd])   ⇒ x.f(evt).map(StreamingCommand[Cmd])
     }
 
     Processor(BidiFlow.fromGraph[Command[Cmd], Cmd, Evt, Event[Evt], Any] {

@@ -21,11 +21,15 @@ object ProducerAction {
   }
 
   trait ConsumeStream[E, C] extends StreamReaction[E, C] {
-    def f: E ⇒ Source[E, Any] ⇒ Future[C]
+    def f: Source[E, Any] ⇒ Future[C]
   }
 
   trait ProduceStream[E, C] extends StreamReaction[E, C] {
     def f: E ⇒ Future[Source[C, Any]]
+  }
+
+  trait ProcessStream[E, C] extends StreamReaction[E, C] {
+    def f: Source[E, Any] ⇒ Future[Source[C, Any]]
   }
 
   object Signal {
@@ -35,8 +39,8 @@ object ProducerAction {
   }
 
   object ConsumeStream {
-    def apply[E, A <: E, B <: E, C](fun: A ⇒ Source[B, Any] ⇒ Future[C]): ConsumeStream[E, C] = new ConsumeStream[E, C] {
-      val f = fun.asInstanceOf[E ⇒ Source[E, Any] ⇒ Future[C]]
+    def apply[Evt, Cmd](fun: Source[Evt, Any] ⇒ Future[Cmd]): ConsumeStream[Evt, Cmd] = new ConsumeStream[Evt, Cmd] {
+      val f = fun
     }
   }
 
@@ -65,6 +69,7 @@ object ConsumerAction {
   case object ConsumeChunkAndEndStream extends ConsumerAction
 
   case object Ignore extends ConsumerAction
+
 }
 
 case class ConsumerActionAndData[Evt](action: ConsumerAction, data: Evt)
