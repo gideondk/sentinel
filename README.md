@@ -30,7 +30,7 @@ In overall, treat Sentinel as alpha software.
 **(Currently) known issues:**
 
 * There is no active (demand) buffering process within the client; when a stream is requested, but not consumed, additional requests on the same socket aren't demanded and therefore not pulled into new requests.
-
+* No real performance testing has been done yet, so consider things shaky. 
 
 ## Installation
 You can install Sentinel through source (by publishing it into your local Ivy repository):
@@ -46,6 +46,7 @@ to your SBT configuration and adding Sentinel to your library dependencies (curr
 
 <notextile><pre><code>libraryDependencies ++= Seq(
   "nl.gideondk" %% "sentinel" % "0.8-M1"
+)
 </code></pre></notextile>
 
 ## Architecture
