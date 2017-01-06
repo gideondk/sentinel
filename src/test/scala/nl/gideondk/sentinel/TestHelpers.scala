@@ -1,18 +1,34 @@
 package nl.gideondk.sentinel
 
+<<<<<<< HEAD
 import org.scalatest.{ Suite, BeforeAndAfterAll, WordSpec }
 import org.scalatest.matchers.ShouldMatchers
 
 import akka.io.SymmetricPipelineStage
 import akka.util.ByteString
-
-import akka.actor._
-import akka.testkit._
-
+=======
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
+>>>>>>> develop
 
-import protocols._
+import akka.actor.ActorSystem
+import akka.event.{ Logging, LoggingAdapter }
+import akka.testkit._
+<<<<<<< HEAD
+=======
+import org.scalatest.concurrent.ScalaFutures
+import org.scalatest.time.Span
+import org.scalatest.{ BeforeAndAfterAll, Matchers, WordSpecLike }
+>>>>>>> develop
 
+import scala.concurrent.{ Await, Future }
+import scala.concurrent.duration.Duration
+import scala.language.postfixOps
+
+abstract class SentinelSpec(_system: ActorSystem)
+    extends TestKit(_system) with WordSpecLike with Matchers with BeforeAndAfterAll with ScalaFutures {
+
+<<<<<<< HEAD
 abstract class TestKitSpec extends TestKit(ActorSystem(java.util.UUID.randomUUID.toString))
     with Suite
     with ShouldMatchers
@@ -26,28 +42,28 @@ abstract class TestKitSpec extends TestKit(ActorSystem(java.util.UUID.randomUUID
 object TestHelpers {
   val portNumber = new AtomicInteger(10500)
 }
+=======
+  implicit val patience = PatienceConfig(testKitSettings.DefaultTimeout.duration, Span(1500, org.scalatest.time.Millis))
+  override val invokeBeforeAllAndAfterAllEvenIfNoTestsAreExpected = true
+  implicit val ec = _system.dispatcher
 
-object BenchmarkHelpers {
-  def timed(desc: String, n: Int)(benchmark: ⇒ Unit) = {
-    println("* " + desc)
-    val t = System.currentTimeMillis
-    benchmark
-    val d = System.currentTimeMillis - t
+  val log: LoggingAdapter = Logging(system, this.getClass)
+>>>>>>> develop
 
-    println("* - number of ops/s: " + n / (d / 1000.0) + "\n")
+  override protected def afterAll(): Unit = {
+    super.afterAll()
+    TestKit.shutdownActorSystem(system)
   }
 
-  def throughput(desc: String, size: Double, n: Int)(benchmark: ⇒ Unit) = {
-    println("* " + desc)
+  def benchmark[A](f: Future[A], numberOfItems: Int, waitFor: Duration = Duration(10, TimeUnit.SECONDS)): Unit = {
     val t = System.currentTimeMillis
-    benchmark
+    Await.result(f, waitFor)
     val d = System.currentTimeMillis - t
-
-    val totalSize = n * size
-    println("* - number of mb/s: " + totalSize / (d / 1000.0) + "\n")
+    println("Number of ops/s: " + numberOfItems / (d / 1000.0) + "\n")
   }
 }
 
+<<<<<<< HEAD
 object LargerPayloadTestHelper {
   def randomBSForSize(size: Int) = {
     implicit val be = java.nio.ByteOrder.BIG_ENDIAN
@@ -59,3 +75,8 @@ object LargerPayloadTestHelper {
     stringB.toString()
   }
 }
+=======
+object TestHelpers {
+  val portNumber = new AtomicInteger(10500)
+}
+>>>>>>> develop
