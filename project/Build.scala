@@ -1,13 +1,14 @@
+import sbt.Keys._
 import sbt._
-import Keys._
+import org.ensime.EnsimePlugin
 
 object ApplicationBuild extends Build {
   override lazy val settings = super.settings ++
     Seq(
       name := "sentinel",
-      version := "0.7.0",
+      version := "0.8-M1",
       organization := "nl.gideondk",
-      scalaVersion := "2.10.2",
+      scalaVersion := "2.11.8",
       parallelExecution in Test := false,
       resolvers ++= Seq(Resolver.mavenLocal,
         "gideondk-repo" at "https://raw.github.com/gideondk/gideondk-mvn-repo/master",
@@ -21,25 +22,32 @@ object ApplicationBuild extends Build {
       publishTo := Some(Resolver.file("file", new File("/Users/gideondk/Development/gideondk-mvn-repo")))
     )
 
+  val akkaVersion = "2.4.11"
+
   val appDependencies = Seq(
-    "org.scalatest" % "scalatest_2.10" % "1.9.1" % "test",
+    "org.scalatest" %% "scalatest" % "3.0.0" % "test",
 
-    "com.typesafe.play" %% "play-iteratees" % "2.2.0",
+    "com.typesafe.akka" %% "akka-stream" % akkaVersion,
+    "com.typesafe.akka" %% "akka-stream-testkit" % akkaVersion,
 
-    "com.typesafe.akka" % "akka-actor_2.10" % "2.3.0",
-    "com.typesafe.akka" %% "akka-testkit" % "2.3.0"
+    "com.typesafe.akka" %% "akka-actor" % akkaVersion,
+    "com.typesafe.akka" %% "akka-testkit" % akkaVersion % "test",
+
+    "com.typesafe" % "config" % "1.3.0"
   )
 
-  lazy val root = Project(id = "sentinel",
-    base = file("."),
-    settings = Project.defaultSettings ++ Seq(
+  lazy val root = Project(
+    id = "sentinel",
+    base = file(".")
+    ).settings(Project.defaultSettings ++ Seq(
       libraryDependencies ++= appDependencies,
       mainClass := Some("Main")
-    ) ++ Format.settings
-  )
+    ) ++ EnsimePlugin.projectSettings ++ Format.settings)
+  
 }
 
 object Format {
+
   import com.typesafe.sbt.SbtScalariform._
 
   lazy val settings = scalariformSettings ++ Seq(
