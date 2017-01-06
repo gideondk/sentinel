@@ -4,7 +4,6 @@ import java.util.concurrent.TimeUnit
 
 import akka.NotUsed
 import akka.actor.ActorSystem
-import akka.event.Logging
 import akka.stream._
 import akka.stream.scaladsl.{ BidiFlow, Broadcast, Flow, GraphDSL, Merge, RunnableGraph, Sink, Source }
 import akka.util.ByteString
@@ -106,7 +105,6 @@ object Client {
 
     Flow.fromGraph(GraphDSL.create(hosts) { implicit b ⇒
       connections ⇒
-        import GraphDSL.Implicits._
 
         val s = b.add(new ClientStage[Context, Cmd, Evt](ClientConfig.connectionsPerHost, ClientConfig.maxFailuresPerHost, ClientConfig.failureRecoveryPeriod, true, processor, protocol.reversed))
 
@@ -146,9 +144,7 @@ class Client[Cmd, Evt](hosts: Source[HostEvent, NotUsed],
       val s = b.add(new ClientStage[Context, Cmd, Evt](connectionsPerHost, maximumFailuresPerHost, recoveryPeriod, true, processor, protocol))
 
       reconnectLogic(b, b.add(hosts), s.in2, s.out2)
-
       source.out ~> s.in1
-
       s.out1 ~> b.add(eventHandler)
 
       ClosedShape

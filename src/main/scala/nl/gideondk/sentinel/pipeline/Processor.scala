@@ -1,6 +1,6 @@
 package nl.gideondk.sentinel.pipeline
 
-import akka.stream.BidiShape
+import akka.stream.{ BidiShape, Materializer }
 import akka.stream.scaladsl.{ BidiFlow, Flow, GraphDSL, Merge, Sink }
 import nl.gideondk.sentinel.protocol._
 

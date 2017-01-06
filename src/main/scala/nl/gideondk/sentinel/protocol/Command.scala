@@ -30,33 +30,3 @@ trait Command[Out]
 case class SingularCommand[Out](payload: Out) extends Command[Out]
 
 case class StreamingCommand[Out](stream: Source[Out, Any]) extends Command[Out]
-
-//trait ServerCommand[Out, In]
-//
-//trait ServerMetric
-//
-//object ServerCommand {
-//
-//  case class AskAll[Cmd, Evt](payload: Cmd, promise: Promise[List[Evt]]) extends ServerCommand[Cmd, Evt]
-//
-//  case class AskAllHosts[Cmd, Evt](payload: Cmd, promise: Promise[List[Evt]]) extends ServerCommand[Cmd, Evt]
-//
-//  case class AskAny[Cmd, Evt](payload: Cmd, promise: Promise[Evt]) extends ServerCommand[Cmd, Evt]
-//
-//}
-//
-//object ServerMetric {
-//
-//  case object ConnectedSockets extends ServerMetric
-//
-//  case object ConnectedHosts extends ServerMetric
-//
-//}
-//
-////object Reply {
-////
-////  case class Response[Cmd](payload: Cmd) extends Reply[Cmd]
-////
-////  case class StreamResponseChunk[Cmd](payload: Cmd) extends Reply[Cmd]
-////
-////}

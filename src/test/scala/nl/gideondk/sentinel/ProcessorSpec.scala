@@ -14,7 +14,7 @@ class ProcessorSpec extends SentinelSpec(ActorSystem()) {
   val serverProcessor = Processor[SimpleMessageFormat, SimpleMessageFormat](SimpleServerHandler, 1, true)
 
   "The AntennaStage" should {
-    "correctly flow in a client, server situation" in {
+    "correctly flow in a client, server like situation" in {
       import nl.gideondk.sentinel.protocol.SimpleMessage._
 
       implicit val materializer = ActorMaterializer()

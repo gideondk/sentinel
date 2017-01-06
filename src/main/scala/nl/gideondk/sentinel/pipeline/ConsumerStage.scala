@@ -28,6 +28,8 @@ class ConsumerStage[Evt, Cmd](resolver: Resolver[Evt]) extends GraphStage[FanOut
     *
     * */
 
+    implicit def mat = this.materializer
+
     val pullThroughHandler = new OutHandler {
       override def onPull() = {
         pull(eventIn)
@@ -45,7 +47,8 @@ class ConsumerStage[Evt, Cmd](resolver: Resolver[Evt]) extends GraphStage[FanOut
 
       override def onPush(): Unit = {
         val chunk = grab(eventIn)
-        resolver.process(chunk) match {
+
+        resolver.process(mat)(chunk) match {
           case ConsumeStreamChunk ⇒
             chunkSource.push(chunk)
 
@@ -80,7 +83,6 @@ class ConsumerStage[Evt, Cmd](resolver: Resolver[Evt]) extends GraphStage[FanOut
       chunkSource = new SubSourceOutlet[Evt]("ConsumerStage.Event.In.ChunkSubStream")
       chunkSource.setHandler(pullThroughHandler)
       setHandler(eventIn, substreamHandler)
-      setHandler(signalOut, substreamHandler)
 
       initialChunk match {
         case Some(x) ⇒ push(signalOut, StreamEvent(Source.single(x) ++ Source.fromGraph(chunkSource.source)))
@@ -100,7 +102,7 @@ class ConsumerStage[Evt, Cmd](resolver: Resolver[Evt]) extends GraphStage[FanOut
     def onPush(): Unit = {
       val evt = grab(eventIn)
 
-      resolver.process(evt) match {
+      resolver.process(mat)(evt) match {
         case x: ProducerAction.Signal[Evt, Cmd]        ⇒ push(actionOut, (SingularEvent(evt), x))
 
         case x: ProducerAction.ProduceStream[Evt, Cmd] ⇒ push(actionOut, (SingularEvent(evt), x))
@@ -124,7 +126,9 @@ class ConsumerStage[Evt, Cmd](resolver: Resolver[Evt]) extends GraphStage[FanOut
     }
 
     def onPull(): Unit = {
-      if (!chunkSubStreamStarted && !hasBeenPulled(eventIn)) pull(eventIn)
+      if (!chunkSubStreamStarted && !hasBeenPulled(eventIn)) {
+        pull(eventIn)
+      }
     }
 
     setHandler(actionOut, this)
