@@ -10,7 +10,7 @@ trait ProducerAction[E, C] extends Action
 
 trait ConsumerAction extends Action
 
-object ProducerAction {
+private[sentinel] object ProducerAction {
 
   trait Reaction[E, C] extends ProducerAction[E, C]
 
@@ -50,11 +50,17 @@ object ProducerAction {
     }
   }
 
+  object ProcessStream {
+    def apply[E, C](fun: Source[E, Any] ⇒ Future[Source[C, Any]]): ProcessStream[E, C] = new ProcessStream[E, C] {
+      val f = fun
+    }
+  }
+
 }
 
-case class ProducerActionAndData[Evt, Cmd](action: ProducerAction[Evt, Cmd], data: Evt)
+private case class ProducerActionAndData[Evt, Cmd](action: ProducerAction[Evt, Cmd], data: Evt)
 
-object ConsumerAction {
+private[sentinel] object ConsumerAction {
 
   case object AcceptSignal extends ConsumerAction
 
@@ -72,4 +78,23 @@ object ConsumerAction {
 
 }
 
-case class ConsumerActionAndData[Evt](action: ConsumerAction, data: Evt)
+object Consume {
+  def event = ConsumerAction.AcceptSignal
+  def error = ConsumerAction.AcceptError
+
+  def streamStart = ConsumerAction.StartStream
+  def streamChunk = ConsumerAction.ConsumeStreamChunk
+  def streamEnd = ConsumerAction.EndStream
+  def streamEndAndTail = ConsumerAction.ConsumeChunkAndEndStream
+
+  def ignore = ConsumerAction.Ignore
+}
+
+object React {
+  def command[Evt, Cmd](fun: Evt ⇒ Future[Cmd]) = ProducerAction.Signal(fun)
+  def stream[Evt, Cmd](fun: Evt ⇒ Future[Source[Cmd, Any]]) = ProducerAction.ProduceStream(fun)
+  def consumeStream[Evt, Cmd](fun: Source[Evt, Any] ⇒ Future[Cmd]) = ProducerAction.ConsumeStream(fun)
+  def process[Evt, Cmd](fun: Source[Evt, Any] ⇒ Future[Source[Cmd, Any]]) = ProducerAction.ProcessStream(fun)
+}
+
+private case class ConsumerActionAndData[Evt](action: ConsumerAction, data: Evt)

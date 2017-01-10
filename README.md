@@ -59,22 +59,22 @@ Both clients as servers share the same `Processor`, which results in a symmetric
 The handle incoming events, multiple actions are defined which can be used to implement logic on top of the used protocol. Actions are split into consumer actions and producers actions, which make a antenna able to:
 
 ### Consumer Actions
-`AcceptSignal`: Accept and consume a incoming signal and apply it on a pending registration
+`Consume.event`: Accept and consume a incoming signal and apply it on a pending registration
 
-`AcceptError`: Accept a incoming error message and apply it as a failure on a pending registration
+`Consume.error`: Accept a incoming error message and apply it as a failure on a pending registration
 
-`ConsumeStreamChunk`: Accept a incoming stream chunk and consume add it to the current running stream
+`Consume.streamChunk`: Accept a incoming stream chunk and consume add it to the current running stream
 
-`EndStream`: Accept a incoming stream terminator and end the current ongoing stream
+`Consume.streamEnd`: Accept a incoming stream terminator and end the current ongoing stream
 
-`ConsumeChunkAndEndStream`: Consumes the chunk and terminates the stream (combination of the two above)
+`Consume.streamEndAndTail`: Consumes the chunk and terminates the stream (combination of the two above)
 
 ### Producer Actions
-`Signal`: Responds to the incoming signal with a new (async) signal
+`React.command`: Responds to the incoming signal with a new (async) signal
 
-`CosumeStream`: Starts consuming the stream until a `EndStream` is received
+`React.consumeStream`: Starts consuming the stream until a `EndStream` is received
 
-`ProduceStream`: Produces a stream (Enumerator) for the requesting hosts
+`React.stream`: Produces a stream (Source) for the requesting hosts
 
 ## Synchronicity
 Normally, Sentinel clients connect to servers through multiple sockets to increase parallel performance on top of the synchronous nature of *TCP* sockets. 
@@ -91,10 +91,10 @@ It's easy to extend the behaviour on the client side for receiving stream respon
 ```scala
 trait DefaultSimpleMessageHandler extends Resolver[SimpleMessageFormat, SimpleMessageFormat] {
    def process(implicit mat: Materializer): PartialFunction[SimpleMessageFormat, Action] = {
-    case SimpleStreamChunk(x)              ⇒ if (x.length > 0) ConsumerAction.ConsumeStreamChunk else ConsumerAction.EndStream
-    case x: SimpleError                    ⇒ ConsumerAction.AcceptError
-    case x: SimpleReply                    ⇒ ConsumerAction.AcceptSignal
-    case SimpleCommand(PING_PONG, payload) ⇒ ProducerAction.Signal { x: SimpleCommand ⇒ Future(SimpleReply("PONG")) }
+    case SimpleStreamChunk(x) ⇒ if (x.length > 0) Consume.streamChunk else Consume.streamEnd
+    case x: SimpleError ⇒ Consume.error
+    case x: SimpleReply ⇒ Consume.event
+    case SimpleCommand(PING_PONG, payload) ⇒ React.command { x: SimpleCommand ⇒ Future(SimpleReply("PONG")) }
   }
 }
 
@@ -107,25 +107,24 @@ In a traditional structure, a different resolver should be used on the server si
 object SimpleServerHandler extends DefaultSimpleMessageHandler {
 
   def process(implicit mat: Materializer): PartialFunction[SimpleMessageFormat, Action] = {
-    case SimpleStreamChunk(x)              ⇒ if (x.length > 0) ConsumerAction.ConsumeStreamChunk else ConsumerAction.EndStream
-    case SimpleCommand(PING_PONG, payload) ⇒ ProducerAction.Signal { x: SimpleCommand ⇒ Future(SimpleReply("PONG")) }
-    case SimpleCommand(TOTAL_CHUNK_SIZE, payload) ⇒ ProducerAction.ConsumeStream { x: Source[SimpleStreamChunk, Any] ⇒
+    case SimpleStreamChunk(x) ⇒ if (x.length > 0) Consume.streamChunk else Consume.streamEnd
+    case SimpleCommand(PING_PONG, payload) ⇒ React.command { x: SimpleCommand ⇒ Future(SimpleReply("PONG")) }
+    case SimpleCommand(TOTAL_CHUNK_SIZE, payload) ⇒ React.consumeStream { x: Source[SimpleStreamChunk, Any] ⇒
       x.runWith(Sink.fold[Int, SimpleMessageFormat](0) { (b, a) ⇒ b + a.payload.length }).map(x ⇒ SimpleReply(x.toString))
     }
-    case SimpleCommand(GENERATE_NUMBERS, payload) ⇒ ProducerAction.ProduceStream { x: SimpleCommand ⇒
+    case SimpleCommand(GENERATE_NUMBERS, payload) ⇒ React.stream { x: SimpleCommand ⇒
       val count = payload.toInt
       Future(Source(List.range(0, count)).map(x ⇒ SimpleStreamChunk(x.toString)) ++ Source.single(SimpleStreamChunk("")))
     }
-    case SimpleCommand(ECHO, payload) ⇒ ProducerAction.Signal { x: SimpleCommand ⇒ Future(SimpleReply(x.payload)) }
   }
 }
 ```
 
-Like illustrated, the `ProducerAction.Signal` producer action makes it able to respond with a Async response. Taking a function which handles the incoming event and producing a new value, wrapped in a `Future`.
+Like illustrated, the `React.command` action makes it able to respond with a Async response. Taking a function which handles the incoming event and producing a new value, wrapped in a `Future`.
 
-`ProducerAction.ConsumeStream` takes a function handling the incoming `Source` with the consequential chunks, resulting in a new value wrapped in a `Future`
+`React.consumeStream` takes a function handling the incoming `Source` with the consequential chunks, resulting in a new value wrapped in a `Future`
 
-`ProducerAction.ProduceStream` takes a function handling the incoming event and returning a corresponding stream as a `Source` wrapped in a `Future`
+`React.stream` takes a function handling the incoming event and returning a corresponding stream as a `Source` wrapped in a `Future`
 
 ### Client
 After the definition of the pipeline, a client is easily created:

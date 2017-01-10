@@ -186,7 +186,7 @@ class Client[Cmd, Evt](hosts: Source[HostEvent, NotUsed],
     case x                     ⇒ Future.failed(IncorrectEventType(x))
   }
 
-  def react(stream: Source[Cmd, Any])(implicit ec: ExecutionContext): Future[Source[Evt, Any]] = send(StreamingCommand(stream)) flatMap {
+  def process(stream: Source[Cmd, Any])(implicit ec: ExecutionContext): Future[Source[Evt, Any]] = send(StreamingCommand(stream)) flatMap {
     case StreamEvent(x)        ⇒ Future(x)
     case SingularErrorEvent(x) ⇒ Future.failed(EventException(x))
     case x                     ⇒ Future.failed(IncorrectEventType(x))

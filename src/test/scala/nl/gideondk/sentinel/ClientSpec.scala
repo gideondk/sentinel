@@ -1,16 +1,15 @@
 package nl.gideondk.sentinel
 
 import akka.actor.ActorSystem
-import akka.stream.{ ActorMaterializer, ClosedShape, OverflowStrategy }
-import akka.stream.scaladsl.{ GraphDSL, RunnableGraph, Sink, Source }
+import akka.stream.scaladsl.{Sink, Source}
+import akka.stream.{ActorMaterializer, OverflowStrategy}
 import nl.gideondk.sentinel.client.ClientStage.NoConnectionsAvailableException
-import nl.gideondk.sentinel.client.{ Client, ClientStage, Host }
-import nl.gideondk.sentinel.pipeline.Processor
+import nl.gideondk.sentinel.client.{Client, ClientStage, Host}
 import nl.gideondk.sentinel.protocol._
 
-import scala.concurrent.{ Await, Promise, duration }
-import duration._
-import scala.util.{ Failure, Success, Try }
+import scala.concurrent.duration._
+import scala.concurrent.{Await, Promise, duration}
+import scala.util.{Failure, Try}
 
 class ClientSpec extends SentinelSpec(ActorSystem()) {
   "a Client" should {
