@@ -4,10 +4,7 @@ import akka.actor.ActorSystem
 import akka.stream.ActorMaterializer
 import akka.stream.scaladsl._
 import nl.gideondk.sentinel.pipeline.ProducerStage
-import nl.gideondk.sentinel.protocol.{ SimpleMessageFormat, SimpleReply, SingularCommand, StreamingCommand }
-
-import scala.concurrent._
-import scala.concurrent.duration._
+import nl.gideondk.sentinel.protocol.{SimpleMessageFormat, SimpleReply, SingularCommand, StreamingCommand}
 
 object ProducerStageSpec {
   val stage = new ProducerStage[SimpleMessageFormat, SimpleMessageFormat]()

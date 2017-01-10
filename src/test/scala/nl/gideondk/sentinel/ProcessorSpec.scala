@@ -1,13 +1,10 @@
 package nl.gideondk.sentinel
 
 import akka.actor.ActorSystem
-import akka.stream.scaladsl.{ GraphDSL, RunnableGraph, Sink, Source }
-import akka.stream.{ ActorMaterializer, ClosedShape }
+import akka.stream.scaladsl.{GraphDSL, RunnableGraph, Sink, Source}
+import akka.stream.{ActorMaterializer, ClosedShape}
 import nl.gideondk.sentinel.pipeline.Processor
 import nl.gideondk.sentinel.protocol._
-
-import scala.concurrent.Await
-import scala.concurrent.duration._
 
 class ProcessorSpec extends SentinelSpec(ActorSystem()) {
   val processor = Processor[SimpleMessageFormat, SimpleMessageFormat](SimpleHandler, 1)

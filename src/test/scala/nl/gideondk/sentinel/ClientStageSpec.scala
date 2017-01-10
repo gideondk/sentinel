@@ -1,17 +1,17 @@
 package nl.gideondk.sentinel
 
 import akka.actor.ActorSystem
-import akka.stream.scaladsl.{ Flow, GraphDSL, RunnableGraph, Sink, Source, Tcp }
-import akka.stream.{ ActorMaterializer, ClosedShape, OverflowStrategy }
+import akka.stream.scaladsl.{Flow, GraphDSL, RunnableGraph, Sink, Source, Tcp}
+import akka.stream.{ActorMaterializer, ClosedShape, OverflowStrategy}
 import akka.util.ByteString
-import nl.gideondk.sentinel.client.ClientStage.{ HostEvent, NoConnectionsAvailableException }
-import nl.gideondk.sentinel.client.{ ClientStage, Host }
+import nl.gideondk.sentinel.client.ClientStage.{HostEvent, NoConnectionsAvailableException}
+import nl.gideondk.sentinel.client.{ClientStage, Host}
 import nl.gideondk.sentinel.pipeline.Processor
 import nl.gideondk.sentinel.protocol._
 
 import scala.concurrent._
 import scala.concurrent.duration._
-import scala.util.{ Failure, Success, Try }
+import scala.util.{Failure, Success, Try}
 
 object ClientStageSpec {
   def mockServer(system: ActorSystem, port: Int): Unit = {

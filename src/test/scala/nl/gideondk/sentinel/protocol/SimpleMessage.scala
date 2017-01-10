@@ -1,8 +1,8 @@
 package nl.gideondk.sentinel.protocol
 
-import akka.stream.{ ActorMaterializer, Materializer }
-import akka.stream.scaladsl.{ BidiFlow, Framing, Sink, Source }
-import akka.util.{ ByteString, ByteStringBuilder }
+import akka.stream.Materializer
+import akka.stream.scaladsl.{BidiFlow, Framing, Sink, Source}
+import akka.util.{ByteString, ByteStringBuilder}
 import nl.gideondk.sentinel.pipeline.Resolver
 
 import scala.concurrent.ExecutionContext.Implicits.global
@@ -28,7 +28,6 @@ object SimpleMessage {
   val TOTAL_CHUNK_SIZE = 2
   val GENERATE_NUMBERS = 3
   val CHUNK_LENGTH = 4
-  val ECHO = 5
 
   implicit val byteOrder = java.nio.ByteOrder.BIG_ENDIAN
 
@@ -76,26 +75,26 @@ import nl.gideondk.sentinel.protocol.SimpleMessage._
 
 object SimpleHandler extends Resolver[SimpleMessageFormat] {
   def process(implicit mat: Materializer): PartialFunction[SimpleMessageFormat, Action] = {
-    case SimpleStreamChunk(x)              ⇒ if (x.length > 0) ConsumerAction.ConsumeStreamChunk else ConsumerAction.EndStream
-    case x: SimpleError                    ⇒ ConsumerAction.AcceptError
-    case x: SimpleReply                    ⇒ ConsumerAction.AcceptSignal
-    case SimpleCommand(PING_PONG, payload) ⇒ ProducerAction.Signal { x: SimpleCommand ⇒ Future(SimpleReply("PONG")) }
-    case x                                 ⇒ println("Unhandled: " + x); ConsumerAction.Ignore
+    case SimpleStreamChunk(x) ⇒ if (x.length > 0) Consume.streamChunk else Consume.streamEnd
+    case x: SimpleError ⇒ Consume.error
+    case x: SimpleReply ⇒ Consume.event
+    case SimpleCommand(PING_PONG, payload) ⇒ React.command { x: SimpleCommand ⇒ Future(SimpleReply("PONG")) }
+    case x ⇒ println("Unhandled: " + x); Consume.ignore
   }
 }
 
 object SimpleServerHandler extends Resolver[SimpleMessageFormat] {
   def process(implicit mat: Materializer): PartialFunction[SimpleMessageFormat, Action] = {
-    case SimpleStreamChunk(x)              ⇒ if (x.length > 0) ConsumerAction.ConsumeStreamChunk else ConsumerAction.EndStream
-    case SimpleCommand(PING_PONG, payload) ⇒ ProducerAction.Signal { x: SimpleCommand ⇒ Future(SimpleReply("PONG")) }
-    case SimpleCommand(TOTAL_CHUNK_SIZE, payload) ⇒ ProducerAction.ConsumeStream { x: Source[SimpleStreamChunk, Any] ⇒
+    case SimpleStreamChunk(x) ⇒ if (x.length > 0) Consume.streamChunk else Consume.streamEnd
+    case SimpleCommand(PING_PONG, payload) ⇒ React.command { x: SimpleCommand ⇒ Future(SimpleReply("PONG")) }
+    case SimpleCommand(TOTAL_CHUNK_SIZE, payload) ⇒ React.consumeStream { x: Source[SimpleStreamChunk, Any] ⇒
       x.runWith(Sink.fold[Int, SimpleMessageFormat](0) { (b, a) ⇒ b + a.payload.length }).map(x ⇒ SimpleReply(x.toString))
     }
-    case SimpleCommand(GENERATE_NUMBERS, payload) ⇒ ProducerAction.ProduceStream { x: SimpleCommand ⇒
+    case SimpleCommand(GENERATE_NUMBERS, payload) ⇒ React.stream { x: SimpleCommand ⇒
       val count = payload.toInt
       Future(Source(List.range(0, count)).map(x ⇒ SimpleStreamChunk(x.toString)) ++ Source.single(SimpleStreamChunk("")))
     }
-    case SimpleCommand(ECHO, payload) ⇒ ProducerAction.Signal { x: SimpleCommand ⇒ Future(SimpleReply(x.payload)) }
-    case x                            ⇒ println("Unhandled: " + x); ConsumerAction.Ignore
+
+    case x ⇒ println("Unhandled: " + x); ConsumerAction.Ignore
   }
 }
