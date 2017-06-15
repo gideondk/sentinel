@@ -2,7 +2,7 @@ package nl.gideondk.sentinel.server
 
 import akka.actor.ActorSystem
 import akka.stream.scaladsl.{ BidiFlow, Flow, GraphDSL, Sink, Source, Tcp }
-import akka.stream.{ ActorMaterializer, FlowShape }
+import akka.stream.{ Materializer, FlowShape }
 import akka.util.ByteString
 import nl.gideondk.sentinel.pipeline.{ Processor, Resolver }
 
@@ -10,7 +10,7 @@ import scala.concurrent.ExecutionContext
 import scala.util.{ Failure, Success }
 
 object Server {
-  def apply[Cmd, Evt](interface: String, port: Int, resolver: Resolver[Evt], protocol: BidiFlow[ByteString, Evt, Cmd, ByteString, Any])(implicit system: ActorSystem, mat: ActorMaterializer, ec: ExecutionContext): Unit = {
+  def apply[Cmd, Evt](interface: String, port: Int, resolver: Resolver[Evt], protocol: BidiFlow[ByteString, Evt, Cmd, ByteString, Any])(implicit system: ActorSystem, mat: Materializer, ec: ExecutionContext): Unit = {
 
     val handler = Sink.foreach[Tcp.IncomingConnection] { conn ⇒
       val processor = Processor[Cmd, Evt](resolver, 1, true)

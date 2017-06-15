@@ -55,20 +55,20 @@ object Client {
 
   def apply[Cmd, Evt](hosts: Source[HostEvent, NotUsed], resolver: Resolver[Evt],
                       shouldReact: Boolean, inputOverflowStrategy: OverflowStrategy,
-                      protocol: BidiFlow[Cmd, ByteString, ByteString, Evt, Any])(implicit system: ActorSystem, mat: ActorMaterializer, ec: ExecutionContext): Client[Cmd, Evt] = {
+                      protocol: BidiFlow[Cmd, ByteString, ByteString, Evt, Any])(implicit system: ActorSystem, mat: Materializer, ec: ExecutionContext): Client[Cmd, Evt] = {
     val processor = Processor[Cmd, Evt](resolver, Config.producerParallelism)
     new Client(hosts, ClientConfig.connectionsPerHost, ClientConfig.maxFailuresPerHost, ClientConfig.failureRecoveryPeriod, ClientConfig.inputBufferSize, inputOverflowStrategy, processor, protocol.reversed)
   }
 
   def apply[Cmd, Evt](hosts: List[Host], resolver: Resolver[Evt],
                       shouldReact: Boolean, inputOverflowStrategy: OverflowStrategy,
-                      protocol: BidiFlow[Cmd, ByteString, ByteString, Evt, Any])(implicit system: ActorSystem, mat: ActorMaterializer, ec: ExecutionContext): Client[Cmd, Evt] = {
+                      protocol: BidiFlow[Cmd, ByteString, ByteString, Evt, Any])(implicit system: ActorSystem, mat: Materializer, ec: ExecutionContext): Client[Cmd, Evt] = {
     val processor = Processor[Cmd, Evt](resolver, Config.producerParallelism)
     new Client(Source(hosts.map(HostUp)), ClientConfig.connectionsPerHost, ClientConfig.maxFailuresPerHost, ClientConfig.failureRecoveryPeriod, ClientConfig.inputBufferSize, inputOverflowStrategy, processor, protocol.reversed)
   }
 
   def flow[Cmd, Evt](hosts: Source[HostEvent, NotUsed], resolver: Resolver[Evt],
-                     shouldReact: Boolean = false, protocol: BidiFlow[Cmd, ByteString, ByteString, Evt, Any])(implicit system: ActorSystem, mat: ActorMaterializer, ec: ExecutionContext) = {
+                     shouldReact: Boolean = false, protocol: BidiFlow[Cmd, ByteString, ByteString, Evt, Any])(implicit system: ActorSystem, mat: Materializer, ec: ExecutionContext) = {
     val processor = Processor[Cmd, Evt](resolver, Config.producerParallelism)
     type Context = Promise[Event[Evt]]
 
@@ -100,7 +100,7 @@ object Client {
 
   def rawFlow[Context, Cmd, Evt](hosts: Source[HostEvent, NotUsed], resolver: Resolver[Evt],
                                  shouldReact: Boolean = false,
-                                 protocol: BidiFlow[Cmd, ByteString, ByteString, Evt, Any])(implicit system: ActorSystem, mat: ActorMaterializer, ec: ExecutionContext) = {
+                                 protocol: BidiFlow[Cmd, ByteString, ByteString, Evt, Any])(implicit system: ActorSystem, mat: Materializer, ec: ExecutionContext) = {
     val processor = Processor[Cmd, Evt](resolver, Config.producerParallelism)
 
     Flow.fromGraph(GraphDSL.create(hosts) { implicit b ⇒
@@ -129,7 +129,7 @@ object Client {
 class Client[Cmd, Evt](hosts: Source[HostEvent, NotUsed],
                        connectionsPerHost: Int, maximumFailuresPerHost: Int, recoveryPeriod: FiniteDuration,
                        inputBufferSize: Int, inputOverflowStrategy: OverflowStrategy,
-                       processor: Processor[Cmd, Evt], protocol: BidiFlow[ByteString, Evt, Cmd, ByteString, Any])(implicit system: ActorSystem, mat: ActorMaterializer) {
+                       processor: Processor[Cmd, Evt], protocol: BidiFlow[ByteString, Evt, Cmd, ByteString, Any])(implicit system: ActorSystem, mat: Materializer) {
 
   type Context = Promise[Event[Evt]]
 
