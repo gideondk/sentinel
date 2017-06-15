@@ -3,10 +3,11 @@ package nl.gideondk.sentinel.client
 import java.util.concurrent.TimeUnit
 
 import akka.NotUsed
-import akka.actor.ActorSystem
+import akka.actor.{ ActorSystem, ExtendedActorSystem, Extension, ExtensionId, ExtensionIdProvider }
 import akka.stream._
 import akka.stream.scaladsl.{ BidiFlow, Broadcast, Flow, GraphDSL, Merge, RunnableGraph, Sink, Source }
 import akka.util.ByteString
+import com.typesafe.config.{ Config ⇒ TypesafeConfig }
 import nl.gideondk.sentinel.Config
 import nl.gideondk.sentinel.client.Client._
 import nl.gideondk.sentinel.client.ClientStage.{ HostEvent, _ }
@@ -17,12 +18,7 @@ import scala.concurrent._
 import scala.concurrent.duration._
 import scala.util.Try
 
-object ClientConfig {
-
-  import com.typesafe.config.ConfigFactory
-
-  private lazy val config = ConfigFactory.load().getConfig("nl.gideondk.sentinel")
-
+class ClientConfig(config: TypesafeConfig) extends Extension {
   val connectionsPerHost = config.getInt("client.host.max-connections")
   val maxFailuresPerHost = config.getInt("client.host.max-failures")
   val failureRecoveryPeriod = Duration(config.getDuration("client.host.failure-recovery-duration").toNanos, TimeUnit.NANOSECONDS)
@@ -32,6 +28,25 @@ object ClientConfig {
 
   val clientParallelism = config.getInt("client.parallelism")
   val inputBufferSize = config.getInt("client.input-buffer-size")
+}
+
+object ClientConfig extends ExtensionId[ClientConfig] with ExtensionIdProvider {
+  override def lookup = ClientConfig
+  override def createExtension(system: ExtendedActorSystem) =
+    new ClientConfig(system.settings.config.getConfig("nl.gideondk.sentinel"))
+  override def get(system: ActorSystem): ClientConfig = super.get(system)
+
+  private def clientConfig(implicit system: ActorSystem) = apply(system)
+
+  def connectionsPerHost(implicit system: ActorSystem) = clientConfig.connectionsPerHost
+  def maxFailuresPerHost(implicit system: ActorSystem) = clientConfig.maxFailuresPerHost
+  def failureRecoveryPeriod(implicit system: ActorSystem) = clientConfig.failureRecoveryPeriod
+
+  def reconnectDuration(implicit system: ActorSystem) = clientConfig.reconnectDuration
+  def shouldReconnect(implicit system: ActorSystem) = clientConfig.shouldReconnect
+
+  def clientParallelism(implicit system: ActorSystem) = clientConfig.clientParallelism
+  def inputBufferSize(implicit system: ActorSystem) = clientConfig.inputBufferSize
 }
 
 object Client {
