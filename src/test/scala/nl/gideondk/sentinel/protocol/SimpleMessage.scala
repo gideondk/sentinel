@@ -1,6 +1,6 @@
 package nl.gideondk.sentinel.protocol
 
-import akka.stream.{ ActorMaterializer, Materializer }
+import akka.stream.Materializer
 import akka.stream.scaladsl.{ BidiFlow, Framing, Sink, Source }
 import akka.util.{ ByteString, ByteStringBuilder }
 import nl.gideondk.sentinel.pipeline.Resolver

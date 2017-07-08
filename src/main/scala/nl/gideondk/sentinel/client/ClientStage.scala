@@ -41,7 +41,7 @@ import nl.gideondk.sentinel.client.ClientStage._
 
 class ClientStage[Context, Cmd, Evt](connectionsPerHost: Int, maximumFailuresPerHost: Int,
                                      recoveryPeriod: FiniteDuration, finishGracefully: Boolean, processor: Processor[Cmd, Evt],
-                                     protocol: BidiFlow[ByteString, Evt, Cmd, ByteString, Any])(implicit system: ActorSystem, mat: ActorMaterializer)
+                                     protocol: BidiFlow[ByteString, Evt, Cmd, ByteString, Any])(implicit system: ActorSystem, mat: Materializer)
 
     extends GraphStage[BidiShape[(Command[Cmd], Context), (Try[Event[Evt]], Context), HostEvent, HostEvent]] {
 
